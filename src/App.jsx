@@ -574,6 +574,11 @@ function App() {
   }
 
   async function handleNoteSave(employeeId, date, note) {
+    if (note.length > 1000) {
+      showToast("❌ Error: Note is too long (maximum 1000 characters).");
+      return;
+    }
+
     setNotes(prev => ({
       ...prev,
       [employeeId]: {
@@ -609,7 +614,7 @@ function App() {
 
   async function handleAddTeam(e) {
     e.preventDefault()
-    if (!newTeamName) return
+    if (!newTeamName || newTeamName.length > 50) return showToast("❌ Invalid team name");
     try {
       await addDoc(collection(db, "teams"), { name: newTeamName });
       setNewTeamName(''); fetchBaseData();
@@ -618,7 +623,7 @@ function App() {
 
   async function handleAddEmployee(e) {
     e.preventDefault()
-    if (!newEmpName) return
+    if (!newEmpName || newEmpName.length > 50) return showToast("❌ Invalid agent name");
     try {
       await addDoc(collection(db, "employees"), { name: newEmpName, team_id: newEmpTeam || null });
       setNewEmpName(''); setNewEmpTeam(''); fetchBaseData();
@@ -627,7 +632,7 @@ function App() {
 
   async function handleAddShift(e) {
     e.preventDefault()
-    if (!newShiftCode) return
+    if (!newShiftCode || newShiftCode.length > 10) return showToast("❌ Invalid shift code");
     try {
       await addDoc(collection(db, "shift_types"), { 
         code: newShiftCode.toUpperCase(),
@@ -664,7 +669,7 @@ function App() {
 
   async function handleSaveTeam(e) {
     e.preventDefault();
-    if (!editingTeam || !editingTeam.name) return;
+    if (!editingTeam || !editingTeam.name || editingTeam.name.length > 50) return showToast("❌ Invalid team name");
     try {
       await updateDoc(doc(db, "teams", editingTeam.id), { name: editingTeam.name });
       setEditingTeam(null); fetchBaseData(); fetchTodayStats();
@@ -673,7 +678,7 @@ function App() {
 
   async function handleSaveEmployee(e) {
     e.preventDefault();
-    if (!editingEmployee || !editingEmployee.name) return;
+    if (!editingEmployee || !editingEmployee.name || editingEmployee.name.length > 50) return showToast("❌ Invalid agent name");
     try {
       await updateDoc(doc(db, "employees", editingEmployee.id), { name: editingEmployee.name, team_id: editingEmployee.team_id || null });
       setEditingEmployee(null); fetchBaseData(); fetchTodayStats();
@@ -682,7 +687,7 @@ function App() {
 
   async function handleSaveShift(e) {
     e.preventDefault();
-    if (!editingShift || !editingShift.code) return;
+    if (!editingShift || !editingShift.code || editingShift.code.length > 10) return showToast("❌ Invalid shift code");
     try {
       await updateDoc(doc(db, "shift_types", editingShift.id), { 
         code: editingShift.code.toUpperCase(), 
