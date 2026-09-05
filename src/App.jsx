@@ -370,7 +370,7 @@ function App() {
   const [newShiftStart, setNewShiftStart] = useState('')
   const [newShiftEnd, setNewShiftEnd] = useState('')
   
-  const ADMIN_EMAIL = 'mohammed.omer@fib.iq'
+  const ADMIN_EMAIL = 'mohammed.dlshad0@gmail.com'
   const [currentUser, setCurrentUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   
@@ -844,7 +844,7 @@ function App() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
-                {currentUser?.email === ADMIN_EMAIL ? '👑 Admin' : '👤 Team Leader'}
+                {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : '👤 Team Leader'}
               </span>
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.2' }}>{currentUser?.email}</span>
             </div>
@@ -937,7 +937,7 @@ function App() {
                    onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'} />
           </div>
           
-          {currentUser?.email === ADMIN_EMAIL && (
+          {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && (
             <button 
               onClick={() => setCurrentTab(currentTab === 'manage' ? 'schedule' : 'manage')}
               style={{ marginLeft: '56px', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
