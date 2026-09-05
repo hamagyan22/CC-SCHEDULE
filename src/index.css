@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-main: #F9F8F4;
+    --bg-card: #FFFFFF;
+    --border-color: #E2E8F0;
+    --text-main: #1A202C;
+    --text-muted: #718096;
+    --input-border: #CBD5E1;
+    --input-bg: transparent;
+    --header-bg: #F1EFEA;
+    --hover-bg: #F1F5F9;
+    --accent-green: #0F7642;
+  }
+
+  .dark {
+    --bg-main: #131722;
+    --bg-card: #1E2330;
+    --border-color: #2D3342;
+    --text-main: #FFFFFF;
+    --text-muted: #94A3B8;
+    --input-border: #2D3342;
+    --input-bg: transparent;
+    --header-bg: #1A1F2C;
+    --hover-bg: #252C3D;
+    --accent-green: #0F7642;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+  }
+}
+
+/* Modern Button & Select Effects */
+button, select {
+  transition: all 0.2s ease-in-out;
+}
+button:hover, select:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+button:active, select:active {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  transform: translateY(1px);
+}
+
+/* Theme Toggle Button Specific Shadow */
+.theme-btn {
+  border-radius: 50%;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.theme-btn:hover {
+  background-color: var(--hover-bg);
+  box-shadow: 0 0 15px rgba(15, 118, 66, 0.4) !important;
+  transform: translateY(-2px) scale(1.05);
+}
+.theme-btn:active {
+  box-shadow: 0 0 5px rgba(15, 118, 66, 0.2) !important;
+  transform: translateY(1px) scale(0.95);
+}
+
+/* Logo Effect to remove background */
+.fib-logo {
+  filter: brightness(1.1) contrast(1.1);
+  mix-blend-mode: multiply;
+}
+.dark .fib-logo {
+  filter: brightness(1.1) contrast(1.1) invert(1) hue-rotate(180deg) brightness(1.5);
+  mix-blend-mode: screen;
+}
+
+/* Custom Table */
+.excel-table {
+  border-collapse: separate;
+  border-spacing: 0 4px;
+  width: 100%;
+  table-layout: fixed;
+}
+.excel-table th {
+  background-color: var(--header-bg);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 12px 8px;
+  text-transform: capitalize;
+  border-bottom: 2px solid var(--bg-main);
+}
+.excel-table td {
+  background-color: var(--bg-card);
+  padding: 6px;
+  text-align: center;
+  font-size: 12px;
+}
+.excel-table tr td:first-child {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+.excel-table tr td:last-child {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.employee-col {
+  width: 200px;
+  text-align: left !important;
+  padding-left: 16px !important;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.date-col {
+  width: 65px;
+}
+
+/* Hollow Inputs */
+.excel-input {
+  width: 100%;
+  height: 24px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  text-align: center;
+  background: var(--input-bg);
+  outline: none;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-main);
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+.excel-input:focus {
+  border-color: var(--accent-green);
+  box-shadow: 0 0 0 1px var(--accent-green);
+}
+.excel-input:hover {
+  border-color: var(--text-muted);
+}
+
+/* Shift Colors - Matching User's Image */
+.bg-out { background-color: #D9EAF7 !important; border-color: #D9EAF7 !important; color: #000000 !important; }
+.bg-off { background-color: #E6B8B7 !important; border-color: #E6B8B7 !important; color: #000000 !important; }
+.bg-v { background-color: #F79646 !important; border-color: #F79646 !important; color: #000000 !important; }
+.bg-h { background-color: #C4D79B !important; border-color: #C4D79B !important; color: #000000 !important; }
+.bg-m { background-color: #C4D79B !important; border-color: #C4D79B !important; color: #000000 !important; }
+.bg-s { background-color: #D9D9D9 !important; border-color: #D9D9D9 !important; color: #FF0000 !important; }
+.bg-emergency { background-color: #D9D9D9 !important; border-color: #D9D9D9 !important; color: #FF0000 !important; }
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
