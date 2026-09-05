@@ -70,11 +70,11 @@ button:active, select:active {
 
 /* Logo Effect to remove background */
 .fib-logo {
-  filter: brightness(1.1) contrast(1.1);
   mix-blend-mode: multiply;
+  filter: brightness(1.2) contrast(1.2) grayscale(0.2);
 }
 .dark .fib-logo {
-  filter: brightness(1.1) contrast(1.1) invert(1) hue-rotate(180deg) brightness(1.5);
+  filter: brightness(1.2) contrast(1.2) invert(1) hue-rotate(180deg) brightness(1.5) grayscale(0.2);
   mix-blend-mode: screen;
 }
 

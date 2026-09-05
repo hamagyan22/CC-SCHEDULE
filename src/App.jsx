@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { supabase } from './supabase'
+import { db, auth } from './firebase'
+import { collection, getDocs, doc, setDoc, deleteDoc, addDoc, updateDoc, query, where, writeBatch } from "firebase/firestore";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote } from 'lucide-react'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -253,55 +255,68 @@ function LoginPage({ isDark, setIsDark }) {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setError(error.message)
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      setError(err.message)
+    }
     setLoading(false)
   }
 
   return (
-    <div className={isDark ? 'dark' : ''} style={{ minHeight: '100vh', backgroundColor: 'var(--bg-main)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+    <div className={isDark ? 'dark' : ''} style={{ position: 'relative', minHeight: '100vh', backgroundColor: 'var(--bg-main)', backgroundImage: isDark ? 'radial-gradient(circle at 50% 0%, rgba(15, 118, 66, 0.15) 0%, transparent 50%)' : 'radial-gradient(circle at 50% 0%, rgba(15, 118, 66, 0.08) 0%, transparent 50%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', overflow: 'hidden' }}>
+      
+      {/* Background decorative blur */}
+      <div style={{ position: 'absolute', top: '10%', right: '20%', width: '300px', height: '300px', backgroundColor: 'var(--accent-green)', filter: 'blur(120px)', opacity: isDark ? 0.2 : 0.1, zIndex: 0, borderRadius: '50%' }}></div>
+      <div style={{ position: 'absolute', bottom: '10%', left: '20%', width: '250px', height: '250px', backgroundColor: '#3B82F6', filter: 'blur(120px)', opacity: isDark ? 0.15 : 0.05, zIndex: 0, borderRadius: '50%' }}></div>
+
       <div style={{ width: '100%', maxWidth: '400px' }}>
+        
         {/* Logo + Title */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <img src="/logo.webp" alt="FIB Logo" className="fib-logo" style={{ height: '72px', objectFit: 'contain', marginBottom: '16px' }} />
-          <h1 style={{ fontSize: '22px', fontWeight: '900', color: 'var(--text-main)', margin: '0 0 6px' }}>Schedule Dashboard</h1>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>Sign in to continue</p>
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <img src="/logo.webp" alt="FIB Logo" className="fib-logo" style={{ height: '96px', objectFit: 'contain', marginBottom: '24px' }} />
+          <h1 style={{ fontSize: '26px', fontWeight: '900', color: 'var(--text-main)', margin: '0 0 8px', letterSpacing: '-0.03em' }}>Schedule Dashboard</h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0, fontWeight: '500' }}>Enter your credentials to access</p>
         </div>
 
         {/* Card */}
-        <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '32px', boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ position: 'relative', zIndex: 10, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '24px', padding: '40px 32px', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.1)' }}>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email</label>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Email Address</label>
               <input
                 type="email" required value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="your@email.com"
-                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', fontSize: '14px', outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s' }}
-                onFocus={e => e.target.style.borderColor = 'var(--accent-green)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border-color)'}
+                style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '15px', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                onFocus={e => { e.target.style.borderColor = 'var(--accent-green)'; e.target.style.boxShadow = '0 0 0 3px rgba(15,118,66,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = 'var(--border-color)'; e.target.style.boxShadow = 'inset 0 2px 4px rgba(0,0,0,0.02)'; }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Password</label>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Password</label>
               <input
                 type="password" required value={password} onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
-                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', fontSize: '14px', outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s' }}
-                onFocus={e => e.target.style.borderColor = 'var(--accent-green)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border-color)'}
+                style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '15px', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                onFocus={e => { e.target.style.borderColor = 'var(--accent-green)'; e.target.style.boxShadow = '0 0 0 3px rgba(15,118,66,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = 'var(--border-color)'; e.target.style.boxShadow = 'inset 0 2px 4px rgba(0,0,0,0.02)'; }}
               />
             </div>
 
             {error && (
-              <div style={{ backgroundColor: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#DC2626' }}>
-                ❌ {error}
+              <div style={{ backgroundColor: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: '12px', padding: '12px 16px', fontSize: '13px', color: '#DC2626', fontWeight: '500' }}>
+                <span style={{ marginRight: '6px' }}>⚠️</span> {error}
               </div>
             )}
 
-            <button type="submit" disabled={loading} style={{ width: '100%', padding: '12px', borderRadius: '8px', backgroundColor: 'var(--accent-green)', color: '#fff', border: 'none', fontSize: '14px', fontWeight: '800', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, letterSpacing: '0.03em', marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button type="submit" disabled={loading} style={{ width: '100%', padding: '14px', borderRadius: '12px', backgroundColor: 'var(--accent-green)', color: '#fff', border: 'none', fontSize: '15px', fontWeight: '800', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, letterSpacing: '0.02em', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(15,118,66,0.25)', transition: 'transform 0.2s' }}
+              onMouseEnter={e => !loading && (e.currentTarget.style.transform = 'translateY(-1px)')}
+              onMouseLeave={e => !loading && (e.currentTarget.style.transform = 'translateY(0)')}
+              onMouseDown={e => !loading && (e.currentTarget.style.transform = 'translateY(1px)')}
+            >
               {loading ? (
                 <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> Signing in...</>
-              ) : 'Sign In →'}
+              ) : 'Sign In'}
             </button>
           </form>
         </div>
@@ -314,7 +329,7 @@ function LoginPage({ isDark, setIsDark }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function App() {
@@ -371,14 +386,11 @@ function App() {
 
   // Auth listener
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user ?? null)
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user)
       setAuthLoading(false)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(session?.user ?? null)
-    })
-    return () => subscription.unsubscribe()
+    });
+    return () => unsubscribe();
   }, [])
 
   useEffect(() => {
@@ -404,54 +416,72 @@ function App() {
   }, [currentWeekIndex, currentYear])
 
   async function fetchBaseData() {
-    const { data: tms } = await supabase.from('teams').select('*').order('name')
-    if (tms) setTeams(tms)
-    const { data: sts } = await supabase.from('shift_types').select('*').order('code')
-    if (sts) setShiftTypes(sts)
-    const { data: emps } = await supabase.from('employees').select('*, teams(name)').order('name')
-    if (emps) setEmployees(emps)
+    const teamsSnap = await getDocs(collection(db, "teams"));
+    const tms = teamsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => a.name.localeCompare(b.name));
+    setTeams(tms);
+
+    const shiftsSnap = await getDocs(collection(db, "shift_types"));
+    const sts = shiftsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => a.code.localeCompare(b.code));
+    setShiftTypes(sts);
+
+    const empsSnap = await getDocs(collection(db, "employees"));
+    const emps = empsSnap.docs.map(doc => {
+      const data = doc.data();
+      const team = tms.find(t => t.id === data.team_id);
+      return { id: doc.id, ...data, teams: team ? { name: team.name } : null };
+    }).sort((a,b) => a.name.localeCompare(b.name));
+    setEmployees(emps);
   }
 
   async function fetchTodayStats() {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
-    const { data: todayScheds } = await supabase.from('schedules').select('employee_id, shift_types(code)').eq('work_date', todayStr);
-    const { data: emps } = await supabase.from('employees').select('id, teams(name)');
-    const { data: shifts } = await supabase.from('shift_types').select('code, start_time');
+    const schedQuery = query(collection(db, "schedules"), where("work_date", "==", todayStr));
+    const schedSnap = await getDocs(schedQuery);
+    
+    // We already have teams, shifts, emps in state but for this effect we might fetch them or use existing state.
+    // To keep it simple and independent, let's fetch again or just rely on state? The original fetches independently.
+    const empsSnap = await getDocs(collection(db, "employees"));
+    const shiftsSnap = await getDocs(collection(db, "shift_types"));
+    const teamsSnap = await getDocs(collection(db, "teams"));
+    
+    const tms = teamsSnap.docs.map(d => ({id: d.id, ...d.data()}));
+    
+    let callM = 0; let callE = 0; let chatM = 0; let chatE = 0;
+    let others = {};
+    
+    const shiftMap = {};
+    shiftsSnap.forEach(s => shiftMap[s.data().code] = s.data().start_time);
 
-    if (todayScheds && emps && shifts) {
-      let callM = 0; let callE = 0; let chatM = 0; let chatE = 0;
-      let others = {};
+    const empTeamMap = {};
+    empsSnap.forEach(e => {
+      const team = tms.find(t => t.id === e.data().team_id);
+      empTeamMap[e.id] = team ? team.name : 'No Team';
+    });
+
+    schedSnap.forEach(docSnap => {
+      const sched = docSnap.data();
+      const originalTeamName = empTeamMap[sched.employee_id] || 'No Team';
+      const teamNameLower = originalTeamName.toLowerCase();
       
-      const shiftMap = {};
-      shifts.forEach(s => shiftMap[s.code] = s.start_time);
+      const code = sched.shift_code || ''; // Notice: we changed to store shift_code directly to save joins
+      if (['OFF','OUT','V','H','M','S','EMERGENCY', ''].includes(code)) return;
+      
+      const startTime = shiftMap[code];
+      const isMorning = startTime ? parseInt(startTime.split(':')[0]) < 14 : true;
 
-      const empTeamMap = {};
-      emps.forEach(e => empTeamMap[e.id] = e.teams?.name || 'No Team');
-
-      todayScheds.forEach(sched => {
-        const originalTeamName = empTeamMap[sched.employee_id] || 'No Team';
-        const teamNameLower = originalTeamName.toLowerCase();
-        
-        const code = sched.shift_types?.code || '';
-        if (['OFF','OUT','V','H','M','S','EMERGENCY', ''].includes(code)) return;
-        
-        const startTime = shiftMap[code];
-        const isMorning = startTime ? parseInt(startTime.split(':')[0]) < 14 : true;
-
-        if (teamNameLower.includes('call')) {
-          if (isMorning) callM++;
-          else callE++;
-        } else if (teamNameLower.includes('chat')) {
-          if (isMorning) chatM++;
-          else chatE++;
-        } else {
-          others[originalTeamName] = (others[originalTeamName] || 0) + 1;
-        }
-      });
-      setTodayStats({ callMorning: callM, callEvening: callE, chatMorning: chatM, chatEvening: chatE, otherTeams: others });
-    }
+      if (teamNameLower.includes('call')) {
+        if (isMorning) callM++;
+        else callE++;
+      } else if (teamNameLower.includes('chat')) {
+        if (isMorning) chatM++;
+        else chatE++;
+      } else {
+        others[originalTeamName] = (others[originalTeamName] || 0) + 1;
+      }
+    });
+    setTodayStats({ callMorning: callM, callEvening: callE, chatMorning: chatM, chatEvening: chatE, otherTeams: others });
   }
 
   async function fetchSchedulesForWeek(weekIdx, year) {
@@ -465,35 +495,36 @@ function App() {
     const minDate = allDates[allDates.length - 1] < allDates[0] ? allDates[allDates.length - 1] : allDates[0]
     const maxDate = allDates[allDates.length - 1] > allDates[0] ? allDates[allDates.length - 1] : allDates[0]
     
-    const { data: scheds } = await supabase
-      .from('schedules')
-      .select('*, shift_types(code)')
-      .gte('work_date', minDate)
-      .lte('work_date', maxDate)
+    const schedQuery = query(
+      collection(db, "schedules"),
+      where("work_date", ">=", minDate),
+      where("work_date", "<=", maxDate)
+    );
+    const schedSnap = await getDocs(schedQuery);
 
-    const { data: fetchedNotes } = await supabase
-      .from('schedule_notes')
-      .select('*')
-      .gte('work_date', minDate)
-      .lte('work_date', maxDate)
+    const notesQuery = query(
+      collection(db, "schedule_notes"),
+      where("work_date", ">=", minDate),
+      where("work_date", "<=", maxDate)
+    );
+    const notesSnap = await getDocs(notesQuery);
 
-    if (scheds) {
-      const map = {}
-      scheds.forEach(s => {
-        if (!map[s.employee_id]) map[s.employee_id] = {}
-        map[s.employee_id][s.work_date] = s.shift_types?.code || ''
-      })
-      setSchedules(map)
-    }
+    const map = {}
+    schedSnap.forEach(docSnap => {
+      const s = docSnap.data();
+      if (!map[s.employee_id]) map[s.employee_id] = {}
+      map[s.employee_id][s.work_date] = s.shift_code || '' // Use shift_code directly
+    })
+    setSchedules(map)
 
-    if (fetchedNotes) {
-      const notesMap = {}
-      fetchedNotes.forEach(n => {
-        if (!notesMap[n.employee_id]) notesMap[n.employee_id] = {}
-        notesMap[n.employee_id][n.work_date] = n.note
-      })
-      setNotes(notesMap)
-    }
+    const notesMap = {}
+    notesSnap.forEach(docSnap => {
+      const n = docSnap.data();
+      if (!notesMap[n.employee_id]) notesMap[n.employee_id] = {}
+      notesMap[n.employee_id][n.work_date] = n.note
+    })
+    setNotes(notesMap)
+    
     setSchedLoading(false)
   }
 
@@ -520,20 +551,26 @@ function App() {
       }
     }))
     
-    const { error } = await supabase.from('schedules').upsert({
-        employee_id: employeeId,
-        shift_id: shiftId,
-        work_date: date
-      }, { onConflict: 'employee_id, work_date' })
-      
-    if (error) showToast("Error saving: " + error.message)
-    else {
+    const docId = `${employeeId}_${date}`;
+    try {
+      if (!shiftCode) {
+        await deleteDoc(doc(db, "schedules", docId));
+      } else {
+        await setDoc(doc(db, "schedules", docId), {
+          employee_id: employeeId,
+          shift_code: shiftCode,
+          work_date: date
+        });
+      }
+    } catch (error) {
+      showToast("Error saving: " + error.message)
+      return;
+    }
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       if (date === todayStr) {
         fetchTodayStats();
       }
-    }
   }
 
   async function handleNoteSave(employeeId, date, note) {
@@ -545,14 +582,15 @@ function App() {
       }
     }))
     
+    const docId = `${employeeId}_${date}`;
     if (note.trim() === '') {
-      await supabase.from('schedule_notes').delete().match({ employee_id: employeeId, work_date: date })
+      await deleteDoc(doc(db, "schedule_notes", docId));
     } else {
-      await supabase.from('schedule_notes').upsert({
+      await setDoc(doc(db, "schedule_notes", docId), {
         employee_id: employeeId,
         work_date: date,
         note: note
-      }, { onConflict: 'employee_id, work_date' })
+      });
     }
     setNotePopup(null)
   }
@@ -572,74 +610,87 @@ function App() {
   async function handleAddTeam(e) {
     e.preventDefault()
     if (!newTeamName) return
-    const { error } = await supabase.from('teams').insert({ name: newTeamName })
-    if (error) showToast(error.message)
-    else { setNewTeamName(''); fetchBaseData(); }
+    try {
+      await addDoc(collection(db, "teams"), { name: newTeamName });
+      setNewTeamName(''); fetchBaseData();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleAddEmployee(e) {
     e.preventDefault()
     if (!newEmpName) return
-    const { error } = await supabase.from('employees').insert({ name: newEmpName, team_id: newEmpTeam || null })
-    if (error) showToast(error.message)
-    else { setNewEmpName(''); setNewEmpTeam(''); fetchBaseData(); }
+    try {
+      await addDoc(collection(db, "employees"), { name: newEmpName, team_id: newEmpTeam || null });
+      setNewEmpName(''); setNewEmpTeam(''); fetchBaseData();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleAddShift(e) {
     e.preventDefault()
     if (!newShiftCode) return
-    const { error } = await supabase.from('shift_types').insert({ 
-      code: newShiftCode.toUpperCase(),
-      start_time: newShiftStart || null,
-      end_time: newShiftEnd || null
-    })
-    if (error) showToast(error.message)
-    else { setNewShiftCode(''); setNewShiftStart(''); setNewShiftEnd(''); fetchBaseData(); fetchTodayStats(); }
+    try {
+      await addDoc(collection(db, "shift_types"), { 
+        code: newShiftCode.toUpperCase(),
+        start_time: newShiftStart || null,
+        end_time: newShiftEnd || null
+      });
+      setNewShiftCode(''); setNewShiftStart(''); setNewShiftEnd(''); fetchBaseData(); fetchTodayStats();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleDeleteTeam(id) {
     if (!window.confirm('Are you sure you want to delete this team?')) return;
-    const { error } = await supabase.from('teams').delete().eq('id', id);
-    if (error) showToast(error.message);
-    else { fetchBaseData(); fetchTodayStats(); }
+    try {
+      await deleteDoc(doc(db, "teams", id));
+      fetchBaseData(); fetchTodayStats();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleDeleteEmployee(id) {
     if (!window.confirm('Are you sure you want to delete this agent?')) return;
-    const { error } = await supabase.from('employees').delete().eq('id', id);
-    if (error) showToast(error.message);
-    else { fetchBaseData(); fetchTodayStats(); }
+    try {
+      await deleteDoc(doc(db, "employees", id));
+      fetchBaseData(); fetchTodayStats();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleDeleteShiftType(id) {
     if (!window.confirm('Are you sure you want to delete this shift code?')) return;
-    const { error } = await supabase.from('shift_types').delete().eq('id', id);
-    if (error) showToast(error.message);
-    else { fetchBaseData(); fetchTodayStats(); }
+    try {
+      await deleteDoc(doc(db, "shift_types", id));
+      fetchBaseData(); fetchTodayStats();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleSaveTeam(e) {
     e.preventDefault();
     if (!editingTeam || !editingTeam.name) return;
-    const { error } = await supabase.from('teams').update({ name: editingTeam.name }).eq('id', editingTeam.id);
-    if (error) showToast(error.message);
-    else { setEditingTeam(null); fetchBaseData(); fetchTodayStats(); }
+    try {
+      await updateDoc(doc(db, "teams", editingTeam.id), { name: editingTeam.name });
+      setEditingTeam(null); fetchBaseData(); fetchTodayStats();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleSaveEmployee(e) {
     e.preventDefault();
     if (!editingEmployee || !editingEmployee.name) return;
-    const { error } = await supabase.from('employees').update({ name: editingEmployee.name, team_id: editingEmployee.team_id || null }).eq('id', editingEmployee.id);
-    if (error) showToast(error.message);
-    else { setEditingEmployee(null); fetchBaseData(); fetchTodayStats(); }
+    try {
+      await updateDoc(doc(db, "employees", editingEmployee.id), { name: editingEmployee.name, team_id: editingEmployee.team_id || null });
+      setEditingEmployee(null); fetchBaseData(); fetchTodayStats();
+    } catch(err) { showToast(err.message) }
   }
 
   async function handleSaveShift(e) {
     e.preventDefault();
     if (!editingShift || !editingShift.code) return;
-    const { error } = await supabase.from('shift_types').update({ code: editingShift.code.toUpperCase(), start_time: editingShift.start_time || null, end_time: editingShift.end_time || null }).eq('id', editingShift.id);
-    if (error) showToast(error.message);
-    else { setEditingShift(null); fetchBaseData(); fetchTodayStats(); }
+    try {
+      await updateDoc(doc(db, "shift_types", editingShift.id), { 
+        code: editingShift.code.toUpperCase(), 
+        start_time: editingShift.start_time || null, 
+        end_time: editingShift.end_time || null 
+      });
+      setEditingShift(null); fetchBaseData(); fetchTodayStats();
+    } catch(err) { showToast(err.message) }
   }
 
   function getShiftClass(shift) {
@@ -793,7 +844,7 @@ function App() {
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.2' }}>{currentUser?.email}</span>
             </div>
           </div>
-          <button onClick={() => supabase.auth.signOut()} style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border-color)', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer' }}>
+          <button onClick={() => signOut(auth)} style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border-color)', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer' }}>
             <LogOut size={15} />
             Logout
           </button>
