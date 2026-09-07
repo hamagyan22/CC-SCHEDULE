@@ -371,6 +371,14 @@ function App() {
   const [newShiftEnd, setNewShiftEnd] = useState('')
   
   const ADMIN_EMAIL = 'mohammed.dlshad0@gmail.com'
+  const userRoles = {
+    'hazad465@gmail.com': '🎓 Trainer',
+    'larakamilmohammad@gmail.com': '⭐ Quality',
+    'jalalburghol1@gmail.com': '👔 Manager',
+    'ankidoboya10@gmail.com': '👤 Team Leader',
+    'hamajano090@gmail.com': '⭐ Quality',
+    'yonisbalindi@gmail.com': '👤 Team Leader',
+  };
   const [currentUser, setCurrentUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   
@@ -845,7 +853,7 @@ function App() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
-                {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : '👤 Team Leader'}
+                {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : (userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader')}
               </span>
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.2' }}>{currentUser?.email}</span>
             </div>
@@ -1183,15 +1191,42 @@ function App() {
                               {Object.keys(counts).length === 0 ? (
                                 <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>-</span>
                               ) : (
-                                Object.entries(counts).sort((a,b) => b[1] - a[1]).map(([code, count]) => {
-                                  const customClass = getShiftClass(code);
-                                  return (
-                                    <div key={code} className={customClass} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '3px 6px', borderRadius: '6px', backgroundColor: customClass ? undefined : 'var(--bg-card)', border: customClass ? undefined : '1px solid var(--border-color)', fontSize: '10px', fontWeight: 'bold', color: customClass ? undefined : 'var(--text-main)', gap: '6px' }}>
-                                      <span style={{ opacity: 0.8 }}>{code}</span>
-                                      <span style={{ backgroundColor: 'var(--accent-green)', color: '#fff', padding: '1px 5px', borderRadius: '10px', fontSize: '9px', fontWeight: '900' }}>{count}</span>
-                                    </div>
-                                  )
-                                })
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', padding: '0 2px' }}>
+                                  {Object.entries(counts).sort((a,b) => {
+                                    const sortOrder = ['A', 'AC', 'AB', 'L', 'LB', 'B', 'BB', 'BC', 'C'];
+                                    const idxA = sortOrder.indexOf(a[0].toUpperCase());
+                                    const idxB = sortOrder.indexOf(b[0].toUpperCase());
+                                    
+                                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                                    if (idxA !== -1) return -1;
+                                    if (idxB !== -1) return 1;
+                                    
+                                    return b[1] - a[1];
+                                  }).map(([code, count]) => {
+                                    const customClass = getShiftClass(code);
+                                    return (
+                                      <div key={code} className={customClass} style={{ 
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        padding: '3px 8px', borderRadius: '16px', 
+                                        backgroundColor: customClass ? undefined : 'var(--bg-card)', 
+                                        border: customClass ? undefined : '1px solid var(--border-color)', 
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+                                        fontSize: '11px', fontWeight: '700', 
+                                        color: customClass ? undefined : 'var(--text-main)'
+                                      }}>
+                                        <span style={{ opacity: 0.85, letterSpacing: '0.02em' }}>{code}</span>
+                                        <span style={{ 
+                                          backgroundColor: customClass ? 'rgba(0,0,0,0.15)' : 'var(--accent-green)', 
+                                          color: customClass ? 'inherit' : '#fff', 
+                                          padding: '2px 6px', 
+                                          borderRadius: '10px', 
+                                          fontSize: '10px', 
+                                          fontWeight: '900' 
+                                        }}>{count}</span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
                               )}
                             </div>
                           </td>
