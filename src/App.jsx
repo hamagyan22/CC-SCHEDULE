@@ -1074,6 +1074,47 @@ function App() {
                                     borderBottom: prevShift ? '1px solid var(--border-color)' : 'none'
                                   }}
                                   onBlur={(e) => handleShiftChange(emp.id, date, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    const allowedKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+                                    if (allowedKeys.includes(e.key)) {
+                                      e.preventDefault(); // Prevent cursor moving inside the text box
+                                      const inputs = Array.from(document.querySelectorAll('.excel-input'));
+                                      const currentIndex = inputs.indexOf(e.currentTarget);
+                                      if (currentIndex === -1) return;
+
+                                      let nextIndex = currentIndex;
+                                      const cols = activeDates.length; // usually 7
+
+                                      if (e.key === 'ArrowRight' && (currentIndex + 1) % cols !== 0) {
+                                        nextIndex = currentIndex + 1;
+                                      } else if (e.key === 'ArrowLeft' && currentIndex % cols !== 0) {
+                                        nextIndex = currentIndex - 1;
+                                      } else if (e.key === 'ArrowDown' && currentIndex + cols < inputs.length) {
+                                        nextIndex = currentIndex + cols;
+                                      } else if (e.key === 'ArrowUp' && currentIndex - cols >= 0) {
+                                        nextIndex = currentIndex - cols;
+                                      }
+
+                                      if (nextIndex !== currentIndex && inputs[nextIndex]) {
+                                        // Save current input before moving, since React's onBlur might race if we just focus away?
+                                        // Actually, standard onBlur will fire automatically when we focus the next element.
+                                        inputs[nextIndex].focus();
+                                        inputs[nextIndex].select();
+                                      }
+                                    } else if (e.key === 'Enter') {
+                                      // Behave like down arrow on enter
+                                      e.preventDefault();
+                                      const inputs = Array.from(document.querySelectorAll('.excel-input'));
+                                      const currentIndex = inputs.indexOf(e.currentTarget);
+                                      const cols = activeDates.length;
+                                      if (currentIndex !== -1 && currentIndex + cols < inputs.length) {
+                                        inputs[currentIndex + cols].focus();
+                                        inputs[currentIndex + cols].select();
+                                      } else {
+                                        e.currentTarget.blur();
+                                      }
+                                    }
+                                  }}
                                 />
                                 {/* Prev week shift - shown as subtle row below */}
                                 {prevShift && (
