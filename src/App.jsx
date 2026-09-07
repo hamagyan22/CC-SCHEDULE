@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { db, auth } from './firebase'
-import { collection, getDocs, doc, setDoc, deleteDoc, addDoc, updateDoc, query, where, writeBatch } from "firebase/firestore";
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote } from 'lucide-react'
+import { collection, getDocs, doc, setDoc, deleteDoc, addDoc, updateDoc, query, where, writeBatch, onSnapshot, orderBy, limit } from "firebase/firestore";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
+import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote, Award, Shield, GraduationCap, Headset, Folder } from 'lucide-react'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
@@ -382,9 +382,162 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   
-  const [todayStats, setTodayStats] = useState({ callMorning: 0, callEvening: 0, chatMorning: 0, chatEvening: 0, otherTeams: {} })
+  const unsubSchedulesRef = useRef(null);
+  const unsubNotesRef = useRef(null);
+  const unsubStatsRef = useRef(null);
+  
+  const [todayStats, setTodayStats] = useState({ callMorning: 0, callEvening: 0, callNight: 0, chatMorning: 0, chatEvening: 0, chatNight: 0, otherTeams: {} })
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' })
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const q = query(collection(db, "history_logs"), orderBy("timestamp", "desc"), limit(100));
+      const snap = await getDocs(q);
+      setHistoryLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error(err);
+      showToast("Error fetching history");
+    }
+    setHistoryLoading(false);
+  }
+
+  useEffect(() => {
+    if (showHistory) fetchHistory();
+  }, [showHistory]);
+
+  const [showAccess, setShowAccess] = useState(false);
+  const [authorizedUsers, setAuthorizedUsers] = useState([]);
+  const [newAccessEmail, setNewAccessEmail] = useState('');
+
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editPhotoURL, setEditPhotoURL] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Prevent background scrolling when modals are open
+  useEffect(() => {
+    if (showHistory || showAccess || notePopup || showProfileModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showHistory, showAccess, notePopup, showProfileModal]);
+  
+  useEffect(() => {
+    if (!currentUser || currentUser.email?.toLowerCase().trim() !== ADMIN_EMAIL.toLowerCase().trim()) return;
+    const unsub = onSnapshot(collection(db, "authorized_users"), snap => {
+      setAuthorizedUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [currentUser]);
+  
+  const handleGrantAccess = async (e) => {
+    e.preventDefault();
+    if (!newAccessEmail) return;
+    const emailLower = newAccessEmail.toLowerCase().trim();
+    try {
+      await setDoc(doc(db, "authorized_users", emailLower), {
+        email: emailLower,
+        role: 'Team Leader',
+        permissions: { editShifts: true, editNotes: true },
+        addedAt: new Date().toISOString()
+      });
+      setNewAccessEmail('');
+    } catch (err) { showToast(err.message); }
+  }
+
+  const handleUpdateAccessRole = async (emailId, newRole) => {
+    try { await updateDoc(doc(db, "authorized_users", emailId), { role: newRole }); }
+    catch (err) { showToast(err.message); }
+  }
+
+  const handleUpdateAccessPermission = async (emailId, permissionKey, val) => {
+    try { await updateDoc(doc(db, "authorized_users", emailId), { [`permissions.${permissionKey}`]: val }); }
+    catch (err) { showToast(err.message); }
+  }
+
+  const handleRemoveAccess = async (emailId) => {
+    try { await deleteDoc(doc(db, "authorized_users", emailId)); }
+    catch (err) { showToast(err.message); }
+  }
+
+  const handleGrantAccessForEmail = async (email) => {
+    try {
+      await setDoc(doc(db, "authorized_users", email), {
+        email: email,
+        role: userRoles[email] || 'Team Leader',
+        permissions: { editShifts: true, editNotes: true },
+        addedAt: new Date().toISOString()
+      });
+    } catch(err) { showToast(err.message) }
+  }
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setProfileSaving(true);
+    try {
+      await updateProfile(auth.currentUser, {
+        displayName: editDisplayName || null,
+        photoURL: editPhotoURL || null
+      });
+      setCurrentUser({ ...auth.currentUser });
+      setShowProfileModal(false);
+      showToast("Profile updated successfully!", "success");
+    } catch (err) {
+      showToast(err.message);
+    }
+    setProfileSaving(false);
+  }
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 150;
+        const MAX_HEIGHT = 150;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        setEditPhotoURL(dataUrl);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const showToast = (message, type = 'error') => {
     setToast({ show: true, message, type });
     setTimeout(() => {
@@ -405,13 +558,13 @@ function App() {
     if (!currentUser) return
     async function init() {
       await fetchBaseData()
-      await fetchTodayStats()
+      fetchTodayStats()
       const initialYear = new Date().getFullYear();
       const weeks = generateWeeksForYear(initialYear);
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const startIdx = weeks.findIndex(w => w.dates.includes(todayStr));
-      await fetchSchedulesForWeek(startIdx !== -1 ? startIdx : 0, initialYear)
+      fetchSchedulesForWeek(startIdx !== -1 ? startIdx : 0, initialYear)
       setInitialLoading(false)
     }
     init()
@@ -445,99 +598,140 @@ function App() {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
-    const schedQuery = query(collection(db, "schedules"), where("work_date", "==", todayStr));
-    const schedSnap = await getDocs(schedQuery);
-    
-    // We already have teams, shifts, emps in state but for this effect we might fetch them or use existing state.
-    // To keep it simple and independent, let's fetch again or just rely on state? The original fetches independently.
+    // Fetch base mappings once
     const empsSnap = await getDocs(collection(db, "employees"));
-    const shiftsSnap = await getDocs(collection(db, "shift_types"));
     const teamsSnap = await getDocs(collection(db, "teams"));
-    
     const tms = teamsSnap.docs.map(d => ({id: d.id, ...d.data()}));
     
-    let callM = 0; let callE = 0; let chatM = 0; let chatE = 0;
-    let others = {};
-    
-    const shiftMap = {};
-    shiftsSnap.forEach(s => shiftMap[s.data().code] = s.data().start_time);
-
     const empTeamMap = {};
     empsSnap.forEach(e => {
       const team = tms.find(t => t.id === e.data().team_id);
       empTeamMap[e.id] = team ? team.name : 'No Team';
     });
 
-    schedSnap.forEach(docSnap => {
-      const sched = docSnap.data();
-      const originalTeamName = empTeamMap[sched.employee_id] || 'No Team';
-      const teamNameLower = originalTeamName.toLowerCase();
-      
-      const code = sched.shift_code || ''; // Notice: we changed to store shift_code directly to save joins
-      if (['OFF','OUT','V','H','M','S','EMERGENCY', ''].includes(code)) return;
-      
-      const startTime = shiftMap[code];
-      const isMorning = startTime ? parseInt(startTime.split(':')[0]) < 14 : true;
+    if (unsubStatsRef.current) unsubStatsRef.current();
 
-      if (teamNameLower.includes('call')) {
-        if (isMorning) callM++;
-        else callE++;
-      } else if (teamNameLower.includes('chat')) {
-        if (isMorning) chatM++;
-        else chatE++;
-      } else {
-        others[originalTeamName] = (others[originalTeamName] || 0) + 1;
-      }
+    const schedQuery = query(collection(db, "schedules"), where("work_date", "==", todayStr));
+    unsubStatsRef.current = onSnapshot(schedQuery, (schedSnap) => {
+      let callM = 0; let callE = 0; let callN = 0;
+      let chatM = 0; let chatE = 0; let chatN = 0;
+      let others = {};
+
+      schedSnap.forEach(docSnap => {
+        const sched = docSnap.data();
+        const originalTeamName = empTeamMap[sched.employee_id] || 'No Team';
+        const teamNameLower = originalTeamName.toLowerCase();
+        
+        const code = (sched.shift_code || '').toUpperCase();
+        if (['OFF','OUT','V','H','M','S','EMERGENCY', ''].includes(code)) return;
+        
+        const morningShifts = ['A', 'AC', 'AB', 'L'];
+        const eveningShifts = ['B', 'BB', 'BC', 'LB'];
+        const nightShifts = ['C'];
+        
+        let shiftType = 'other';
+        if (morningShifts.includes(code)) shiftType = 'morning';
+        else if (eveningShifts.includes(code)) shiftType = 'evening';
+        else if (nightShifts.includes(code)) shiftType = 'night';
+
+        const isExcludedTeam = teamNameLower.includes('quality') || 
+                               teamNameLower.includes('leader') || 
+                               teamNameLower.includes('trainer') || 
+                               teamNameLower.includes('help desk') || 
+                               teamNameLower.includes('helpdesk');
+
+        if (shiftType !== 'other') {
+          if (!isExcludedTeam && teamNameLower.includes('call')) {
+            if (shiftType === 'morning') callM++;
+            else if (shiftType === 'evening') callE++;
+            else if (shiftType === 'night') callN++;
+          } else if (!isExcludedTeam && teamNameLower.includes('chat')) {
+            if (shiftType === 'morning') chatM++;
+            else if (shiftType === 'evening') chatE++;
+            else if (shiftType === 'night') chatN++;
+          } else {
+            if (originalTeamName !== 'No Team') {
+              others[originalTeamName] = (others[originalTeamName] || 0) + 1;
+            }
+          }
+        }
+      });
+      setTodayStats({ 
+        callMorning: callM, callEvening: callE, callNight: callN, 
+        chatMorning: chatM, chatEvening: chatE, chatNight: chatN, 
+        otherTeams: others 
+      });
     });
-    setTodayStats({ callMorning: callM, callEvening: callE, chatMorning: chatM, chatEvening: chatE, otherTeams: others });
   }
 
-  async function fetchSchedulesForWeek(weekIdx, year) {
+  function fetchSchedulesForWeek(weekIdx, year) {
     setSchedLoading(true)
     const weeksList = generateWeeksForYear(year)
     const weekDates = weeksList[weekIdx].dates
 
-    // Also fetch previous week if it exists
     const prevWeekDates2 = weekIdx > 0 ? weeksList[weekIdx - 1].dates : []
     const allDates = [...weekDates, ...prevWeekDates2]
     const sortedDates = [...allDates].sort()
     const minDate = sortedDates[0]
     const maxDate = sortedDates[sortedDates.length - 1]
     
+    if (unsubSchedulesRef.current) unsubSchedulesRef.current();
+    if (unsubNotesRef.current) unsubNotesRef.current();
+
     const schedQuery = query(
       collection(db, "schedules"),
       where("work_date", ">=", minDate),
       where("work_date", "<=", maxDate)
     );
-    const schedSnap = await getDocs(schedQuery);
+    unsubSchedulesRef.current = onSnapshot(schedQuery, (schedSnap) => {
+      const map = {}
+      schedSnap.forEach(docSnap => {
+        const s = docSnap.data();
+        if (!map[s.employee_id]) map[s.employee_id] = {}
+        map[s.employee_id][s.work_date] = s.shift_code || ''
+      })
+      setSchedules(map)
+      setSchedLoading(false)
+    });
 
     const notesQuery = query(
       collection(db, "schedule_notes"),
       where("work_date", ">=", minDate),
       where("work_date", "<=", maxDate)
     );
-    const notesSnap = await getDocs(notesQuery);
+    unsubNotesRef.current = onSnapshot(notesQuery, (notesSnap) => {
+      const notesMap = {}
+      notesSnap.forEach(docSnap => {
+        const n = docSnap.data();
+        if (!notesMap[n.employee_id]) notesMap[n.employee_id] = {}
+        notesMap[n.employee_id][n.work_date] = n.note
+      })
+      setNotes(notesMap)
+    });
+  }
 
-    const map = {}
-    schedSnap.forEach(docSnap => {
-      const s = docSnap.data();
-      if (!map[s.employee_id]) map[s.employee_id] = {}
-      map[s.employee_id][s.work_date] = s.shift_code || '' // Use shift_code directly
-    })
-    setSchedules(map)
+  const canEditShifts = () => {
+    if (currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()) return true;
+    const user = authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim());
+    if (user) return user.permissions?.editShifts ?? true;
+    if (userRoles[currentUser?.email?.toLowerCase().trim()]) return true;
+    return false;
+  }
 
-    const notesMap = {}
-    notesSnap.forEach(docSnap => {
-      const n = docSnap.data();
-      if (!notesMap[n.employee_id]) notesMap[n.employee_id] = {}
-      notesMap[n.employee_id][n.work_date] = n.note
-    })
-    setNotes(notesMap)
-    
-    setSchedLoading(false)
+  const canEditNotes = () => {
+    if (currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()) return true;
+    const user = authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim());
+    if (user) return user.permissions?.editNotes ?? true;
+    if (userRoles[currentUser?.email?.toLowerCase().trim()]) return true;
+    return false;
   }
 
   async function handleShiftChange(employeeId, date, value) {
+    if (!canEditShifts()) {
+      showToast("❌ You do not have permission to edit shifts.");
+      fetchSchedulesForWeek(currentWeekIndex, currentYear);
+      return;
+    }
     const shiftCode = value.toUpperCase()
     
     let shiftId = null;
@@ -552,6 +746,9 @@ function App() {
       }
     }
 
+    const oldValue = schedules[employeeId]?.[date] || '';
+    if (oldValue === shiftCode) return;
+
     setSchedules(prev => ({
       ...prev,
       [employeeId]: {
@@ -560,31 +757,52 @@ function App() {
       }
     }))
     
+    const empName = employees.find(e => e.id === employeeId)?.name || 'Unknown';
     const docId = `${employeeId}_${date}`;
+    
     try {
+      const batch = writeBatch(db);
       if (!shiftCode) {
-        await deleteDoc(doc(db, "schedules", docId));
+        batch.delete(doc(db, "schedules", docId));
       } else {
-        await setDoc(doc(db, "schedules", docId), {
+        batch.set(doc(db, "schedules", docId), {
           employee_id: employeeId,
           shift_code: shiftCode,
           work_date: date
         });
       }
+
+      const logRef = doc(collection(db, "history_logs"));
+      batch.set(logRef, {
+        type: 'shift',
+        user: currentUser?.email || 'Unknown',
+        employee: empName,
+        work_date: date,
+        old_value: oldValue,
+        new_value: shiftCode,
+        timestamp: new Date().toISOString()
+      });
+
+      await batch.commit();
     } catch (error) {
       showToast("Error saving: " + error.message)
       return;
     }
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      if (date === todayStr) {
-        fetchTodayStats();
-      }
   }
 
   async function handleNoteSave(employeeId, date, note) {
+    if (!canEditNotes()) {
+      showToast("❌ You do not have permission to edit notes.");
+      return;
+    }
     if (note.length > 1000) {
       showToast("❌ Error: Note is too long (maximum 1000 characters).");
+      return;
+    }
+
+    const oldValue = notes[employeeId]?.[date] || '';
+    if (oldValue === note) {
+      setNotePopup(null);
       return;
     }
 
@@ -596,15 +814,35 @@ function App() {
       }
     }))
     
+    const empName = employees.find(e => e.id === employeeId)?.name || 'Unknown';
     const docId = `${employeeId}_${date}`;
-    if (note.trim() === '') {
-      await deleteDoc(doc(db, "schedule_notes", docId));
-    } else {
-      await setDoc(doc(db, "schedule_notes", docId), {
-        employee_id: employeeId,
+    
+    try {
+      const batch = writeBatch(db);
+      if (note.trim() === '') {
+        batch.delete(doc(db, "schedule_notes", docId));
+      } else {
+        batch.set(doc(db, "schedule_notes", docId), {
+          employee_id: employeeId,
+          work_date: date,
+          note: note
+        });
+      }
+
+      const logRef = doc(collection(db, "history_logs"));
+      batch.set(logRef, {
+        type: 'note',
+        user: currentUser?.email || 'Unknown',
+        employee: empName,
         work_date: date,
-        note: note
+        old_value: oldValue,
+        new_value: note,
+        timestamp: new Date().toISOString()
       });
+
+      await batch.commit();
+    } catch (error) {
+      showToast("Error saving note: " + error.message)
     }
     setNotePopup(null)
   }
@@ -755,9 +993,13 @@ function App() {
   const activeMonthIndex = WEEKS[currentWeekIndex].monthIndex
   const prevWeekDates = currentWeekIndex > 0 ? WEEKS[currentWeekIndex - 1].dates : []
 
-  const filteredEmployees = selectedTeamFilter === 'ALL' 
-    ? employees 
-    : employees.filter(emp => emp.team_id === selectedTeamFilter);
+  const filteredEmployees = employees.filter(emp => {
+    if (selectedTeamFilter !== 'ALL' && emp.team_id !== selectedTeamFilter) return false;
+    if (searchQuery.trim() !== '') {
+      if (!emp.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    }
+    return true;
+  });
 
   const groupedEmployees = (() => {
     const groups = {};
@@ -847,20 +1089,35 @@ function App() {
             {isDark ? <Sun size={20} /> : <Moon size={20} />}
           </button>
           {/* User info */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '6px', backgroundColor: 'var(--header-bg)', border: '1px solid var(--border-color)' }}>
-            <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', fontWeight: '800' }}>
-              {currentUser?.email?.[0]?.toUpperCase()}
-            </div>
+          <div 
+            onClick={() => {
+              setEditDisplayName(currentUser?.displayName || '');
+              setEditPhotoURL(currentUser?.photoURL || '');
+              setShowProfileModal(true);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '6px', backgroundColor: 'var(--header-bg)', border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'background-color 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--header-bg)'}
+          >
+            {currentUser?.photoURL ? (
+              <img src={currentUser.photoURL} alt="Profile" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', fontWeight: '800' }}>
+                {(currentUser?.displayName || currentUser?.email)?.[0]?.toUpperCase()}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
-                {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : (userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader')}
+                {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : 
+                 (authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim()) ? '👤 Team Leader' :
+                 (userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader'))}
               </span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.2' }}>{currentUser?.email}</span>
+              <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-muted)', lineHeight: '1.2' }}>{currentUser?.displayName || currentUser?.email}</span>
             </div>
           </div>
           <button onClick={() => signOut(auth)} style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border-color)', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer' }}>
             <LogOut size={15} />
-            Logout
+            Log Out
           </button>
         </div>
       </nav>
@@ -873,16 +1130,21 @@ function App() {
           {/* Call Team Card */}
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
             <div>
-              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>📞 Call Team <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <div>
+              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px' }}>📞 Call Team <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
+              <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                <div style={{ minWidth: '65px' }}>
                   <div style={{ fontSize: '30px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>{todayStats.callMorning}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>🌅 Morning</div>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌅 Morning</div>
                 </div>
-                <div style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                <div>
+                <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
+                <div style={{ minWidth: '65px' }}>
                   <div style={{ fontSize: '30px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>{todayStats.callEvening}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>🌆 Evening</div>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌆 Evening</div>
+                </div>
+                <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
+                <div style={{ minWidth: '65px' }}>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#8B5CF6', lineHeight: '1' }}>{todayStats.callNight || 0}</div>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌙 Overnight</div>
                 </div>
               </div>
             </div>
@@ -894,16 +1156,21 @@ function App() {
           {/* Chat Team Card */}
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
             <div>
-              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>💬 Chat Team <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <div>
+              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px' }}>💬 Chat Team <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
+              <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                <div style={{ minWidth: '65px' }}>
                   <div style={{ fontSize: '30px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>{todayStats.chatMorning}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>🌅 Morning</div>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌅 Morning</div>
                 </div>
-                <div style={{ width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-                <div>
+                <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
+                <div style={{ minWidth: '65px' }}>
                   <div style={{ fontSize: '30px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>{todayStats.chatEvening}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>🌆 Evening</div>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌆 Evening</div>
+                </div>
+                <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
+                <div style={{ minWidth: '65px' }}>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#8B5CF6', lineHeight: '1' }}>{todayStats.chatNight || 0}</div>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌙 Overnight</div>
                 </div>
               </div>
             </div>
@@ -915,17 +1182,35 @@ function App() {
           {/* Other Teams Card */}
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
             <div style={{ flex: 1, marginRight: '12px' }}>
-              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>🏢 Other Teams <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px' }}>🏢 Other Teams <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
+              <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {Object.keys(todayStats.otherTeams).length === 0 ? (
                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No other agents scheduled.</span>
                 ) : (
-                  Object.entries(todayStats.otherTeams).map(([team, count]) => (
-                    <div key={team} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '8px', backgroundColor: 'var(--header-bg)', border: '1px solid var(--border-color)' }}>
-                      <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>{team}:</span>
-                      <span style={{ fontSize: '13px', fontWeight: '900', color: 'var(--accent-green)' }}>{count}</span>
-                    </div>
-                  ))
+                  Object.entries(todayStats.otherTeams).map(([team, count], idx, arr) => {
+                    let teamColor = 'var(--text-main)';
+                    let TeamIcon = Folder;
+                    const lower = team.toLowerCase();
+                    if (lower.includes('quality')) { teamColor = '#14b8a6'; TeamIcon = Award; }
+                    else if (lower.includes('leader')) { teamColor = '#ec4899'; TeamIcon = Shield; }
+                    else if (lower.includes('trainer')) { teamColor = '#8b5cf6'; TeamIcon = GraduationCap; }
+                    else if (lower.includes('help desk') || lower.includes('helpdesk')) { teamColor = '#f97316'; TeamIcon = Headset; }
+                    
+                    return (
+                      <React.Fragment key={team}>
+                        <div style={{ minWidth: '60px' }}>
+                          <div style={{ fontSize: '30px', fontWeight: '900', color: teamColor, lineHeight: '1' }}>{count}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>
+                            <TeamIcon size={13} color={teamColor} />
+                            {team}
+                          </div>
+                        </div>
+                        {idx < arr.length - 1 && (
+                          <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
+                        )}
+                      </React.Fragment>
+                    )
+                  })
                 )}
               </div>
             </div>
@@ -941,18 +1226,54 @@ function App() {
           <div style={{ position: 'relative', width: '280px' }}>
             <Search style={{ width: '16px', height: '16px', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input type="text" placeholder="Search agent..." 
-                   style={{ width: '100%', padding: '10px 12px 10px 36px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '14px', color: 'var(--text-main)', outline: 'none' }} 
-                   onFocus={(e) => e.target.style.borderColor = '#0F7642'}
-                   onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'} />
+                   value={searchQuery}
+                   onChange={(e) => setSearchQuery(e.target.value)}
+                   onFocus={(e) => { e.target.style.borderColor = '#0F7642'; setIsSearchFocused(true); }}
+                   onBlur={(e) => { e.target.style.borderColor = 'var(--border-color)'; setTimeout(() => setIsSearchFocused(false), 200); }}
+                   style={{ width: '100%', padding: '10px 12px 10px 36px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '14px', color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s', boxSizing: 'border-box' }} />
+            
+            {isSearchFocused && searchQuery.trim() !== '' && (
+              <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, backgroundColor: 'var(--bg-main)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.3)', zIndex: 100, maxHeight: '250px', overflowY: 'auto' }} className="custom-scrollbar">
+                {employees.filter(emp => emp.name.toLowerCase().includes(searchQuery.toLowerCase()) && emp.name.toLowerCase() !== searchQuery.toLowerCase()).length > 0 ? (
+                  employees.filter(emp => emp.name.toLowerCase().includes(searchQuery.toLowerCase()) && emp.name.toLowerCase() !== searchQuery.toLowerCase()).map(emp => (
+                    <div key={emp.id} 
+                         onClick={() => {
+                           setSearchQuery(emp.name);
+                           setIsSearchFocused(false);
+                         }}
+                         style={{ padding: '10px 16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-main)', borderBottom: '1px solid var(--border-color)' }}
+                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--header-bg)'}
+                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      {emp.name}
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '10px 16px', fontSize: '13px', color: 'var(--text-muted)' }}>No matches found</div>
+                )}
+              </div>
+            )}
           </div>
           
           {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && (
-            <button 
-              onClick={() => setCurrentTab(currentTab === 'manage' ? 'schedule' : 'manage')}
-              style={{ marginLeft: '56px', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
-              {currentTab === 'manage' ? <Calendar size={16} /> : <Settings size={16} />}
-              {currentTab === 'manage' ? 'VIEW SCHEDULE' : 'MANAGE'}
-            </button>
+            <React.Fragment>
+              <button 
+                onClick={() => setShowAccess(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                <Shield size={16} /> Access
+              </button>
+              <button 
+                onClick={() => setShowHistory(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                <Clock size={16} /> History
+              </button>
+              <button 
+                onClick={() => setCurrentTab(currentTab === 'manage' ? 'schedule' : 'manage')}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                {currentTab === 'manage' ? <Calendar size={16} /> : <Settings size={16} />}
+                {currentTab === 'manage' ? 'View Schedule' : 'Manage'}
+              </button>
+            </React.Fragment>
           )}
         </div>
 
@@ -1036,11 +1357,16 @@ function App() {
               <table className="excel-table">
                 <thead>
                   <tr>
-                    <th className="employee-col">AGENT</th>
+                    <th className="employee-col" style={{ paddingLeft: '24px', color: 'var(--text-muted)', fontSize: '11px', fontWeight: '800', letterSpacing: '0.05em', textTransform: 'uppercase', borderBottom: '1px solid var(--border-color)' }}>
+                      Agent
+                    </th>
                     {activeDates.map((date, i) => (
-                      <th key={date} className="date-col">
-                        <div style={{ marginBottom: '2px', color: 'var(--text-main)', textTransform: 'uppercase' }}>{date.split('-')[2]}-{new Date(date).toLocaleString('default', { month: 'short' })}</div>
-                        <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{DAY_NAMES[i]}</div>
+                      <th key={date} className="date-col" style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{DAY_NAMES[i]}</span>
+                          <span style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)' }}>{date.split('-')[2]}</span>
+                          <span style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)' }}>{new Date(date).toLocaleString('default', { month: 'short' })}</span>
+                        </div>
                       </th>
                     ))}
                   </tr>
@@ -1574,6 +1900,221 @@ function App() {
             </div>
           </div>
         </>
+      )}
+      
+      {/* History Modal */}
+      {showHistory && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: 'var(--bg-main)', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', color: 'var(--text-main)' }}>
+                <Clock size={20} /> History Log
+              </h2>
+              <button onClick={() => setShowHistory(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+            
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '8px' }} className="custom-scrollbar">
+              {historyLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>Loading history...</div>
+              ) : historyLogs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>No history available.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {historyLogs.map(log => (
+                    <div key={log.id} style={{ padding: '12px', backgroundColor: 'var(--bg-card)', border: `1px solid var(--border-color)`, borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '12px' }}>
+                        <span style={{ fontWeight: 'bold', color: 'var(--text-main)' }}>{log.employee}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-main)' }}>
+                        <span style={{ color: 'var(--accent-green)', fontWeight: 'bold' }}>{log.user}</span> updated {log.type === 'shift' ? 'shift' : 'note'} for <span style={{ fontWeight: 'bold' }}>{log.work_date}</span>:
+                      </div>
+                      <div style={{ marginTop: '6px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through' }}>{log.old_value || '(empty)'}</span>
+                        <span>➔</span>
+                        <span style={{ color: 'var(--text-main)', fontWeight: 'bold' }}>{log.new_value || '(empty)'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Access Modal */}
+      {showAccess && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: 'var(--bg-main)', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '500px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', color: 'var(--text-main)' }}>
+                <Shield size={20} /> Access Management
+              </h2>
+              <button onClick={() => setShowAccess(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+            
+            <form onSubmit={handleGrantAccess} style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
+              <input 
+                type="email" 
+                placeholder="Agent email..." 
+                value={newAccessEmail}
+                onChange={(e) => setNewAccessEmail(e.target.value)}
+                required
+                style={{ flex: 1, padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
+              />
+              <button type="submit" style={{ backgroundColor: 'var(--accent-green)', color: 'white', border: 'none', padding: '0 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add</button>
+            </form>
+
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '8px' }} className="custom-scrollbar">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {authorizedUsers.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>No users granted access yet.</div>
+                ) : (
+                  authorizedUsers.map(user => (
+                    <div key={user.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px 16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-main)' }}>{user.email}</div>
+                        <button onClick={() => handleRemoveAccess(user.id)} style={{ background: 'var(--accent-red, #ef4444)', border: 'none', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>Remove</button>
+                      </div>
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', width: '50px' }}>Role:</span>
+                        <input 
+                          type="text" 
+                          value={user.role || ''} 
+                          onChange={(e) => handleUpdateAccessRole(user.id, e.target.value)}
+                          style={{ flex: 1, padding: '4px 8px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-main)' }}>Edit Shifts</span>
+                        <div 
+                          onClick={() => handleUpdateAccessPermission(user.id, 'editShifts', !(user.permissions?.editShifts ?? true))}
+                          style={{ width: '36px', height: '20px', borderRadius: '10px', backgroundColor: (user.permissions?.editShifts ?? true) ? 'var(--accent-green)' : 'var(--border-color)', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                        >
+                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '2px', left: (user.permissions?.editShifts ?? true) ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-main)' }}>Edit Notes</span>
+                        <div 
+                          onClick={() => handleUpdateAccessPermission(user.id, 'editNotes', !(user.permissions?.editNotes ?? true))}
+                          style={{ width: '36px', height: '20px', borderRadius: '10px', backgroundColor: (user.permissions?.editNotes ?? true) ? 'var(--accent-green)' : 'var(--border-color)', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                        >
+                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '2px', left: (user.permissions?.editNotes ?? true) ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                
+                {/* Visual rendering for hardcoded Fallbacks just so they know */}
+                {Object.keys(userRoles).map(email => {
+                  if (authorizedUsers.find(u => u.id === email)) return null; // skip if already in dynamic list
+                  return (
+                    <div key={email} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', opacity: 0.6, marginBottom: '8px' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-main)' }}>{email}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Role: {userRoles[email]} (System Default)</div>
+                      </div>
+                      <button 
+                        onClick={() => handleGrantAccessForEmail(email)}
+                        style={{ background: 'var(--accent-green)', border: 'none', color: 'white', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                      >
+                        Customize Access
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Settings Modal */}
+      {showProfileModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: 'var(--bg-main)', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', color: 'var(--text-main)' }}>
+                👤 Edit Profile
+              </h2>
+              <button onClick={() => setShowProfileModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+            
+            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ position: 'relative', cursor: 'pointer', borderRadius: '50%', overflow: 'hidden', width: '90px', height: '90px', border: '3px solid var(--accent-green)', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                  {editPhotoURL ? (
+                    <img src={editPhotoURL} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', backgroundColor: 'var(--header-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)', fontSize: '36px', fontWeight: '800' }}>
+                      {(editDisplayName || currentUser?.email)?.[0]?.toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px', fontWeight: 'bold' }}>
+                    Upload
+                  </div>
+                  <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
+                </label>
+
+                <div style={{ marginTop: '16px', display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '300px' }}>
+                   {[
+                     '/avatars/banker_male_1.jpg',
+                     '/avatars/banker_female_1.jpg',
+                     '/avatars/banker_male_2.jpg',
+                     '/avatars/banker_female_2.jpg',
+                     '/avatars/banker_male_3.jpg',
+                     '/avatars/banker_female_3.jpg',
+                     ...(currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? ['/avatars/banker_admin.jpg'] : [])
+                   ].map(url => (
+                     <img 
+                       key={url} 
+                       src={url} 
+                       alt="avatar" 
+                       onClick={() => setEditPhotoURL(url)}
+                       style={{ width: '45px', height: '45px', borderRadius: '50%', cursor: 'pointer', border: editPhotoURL === url ? '2px solid var(--accent-green)' : '2px solid transparent', transition: 'transform 0.1s' }}
+                       onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                       onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                     />
+                   ))}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>Username</label>
+                <input 
+                  type="text" 
+                  placeholder="Enter username..." 
+                  value={editDisplayName}
+                  onChange={(e) => setEditDisplayName(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>Role (Job Title)</label>
+                <div style={{ padding: '10px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-main)', color: 'var(--text-muted)', fontSize: '14px', border: '1px solid var(--border-color)', opacity: 0.8, cursor: 'not-allowed' }}>
+                  {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : 
+                   (authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim()) ? '👤 Team Leader' :
+                   (userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader'))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
+                <button type="button" onClick={() => setShowProfileModal(false)} style={{ padding: '10px 20px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" disabled={profileSaving} style={{ padding: '10px 20px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--accent-green)', color: 'white', fontWeight: 'bold', cursor: profileSaving ? 'not-allowed' : 'pointer', opacity: profileSaving ? 0.7 : 1 }}>
+                  {profileSaving ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )
