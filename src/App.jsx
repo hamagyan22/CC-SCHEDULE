@@ -492,8 +492,9 @@ function App() {
     // Also fetch previous week if it exists
     const prevWeekDates2 = weekIdx > 0 ? weeksList[weekIdx - 1].dates : []
     const allDates = [...weekDates, ...prevWeekDates2]
-    const minDate = allDates[allDates.length - 1] < allDates[0] ? allDates[allDates.length - 1] : allDates[0]
-    const maxDate = allDates[allDates.length - 1] > allDates[0] ? allDates[allDates.length - 1] : allDates[0]
+    const sortedDates = [...allDates].sort()
+    const minDate = sortedDates[0]
+    const maxDate = sortedDates[sortedDates.length - 1]
     
     const schedQuery = query(
       collection(db, "schedules"),
