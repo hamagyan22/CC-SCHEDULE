@@ -445,10 +445,10 @@ function App() {
   const customDatePortalRef = useRef(null)
 
   const [showExportModal, setShowExportModal] = useState(false)
-  const [exportModalYear, setExportModalYear] = useState(() => new Date().getFullYear())
-  const [exportModalWeekIndex, setExportModalWeekIndex] = useState(0)
-  const [exportCustomDatePicker, setExportCustomDatePicker] = useState('')
+  const [exportRangeStart, setExportRangeStart] = useState('')
+  const [exportRangeEnd, setExportRangeEnd] = useState('')
   const [exportingSystemFile, setExportingSystemFile] = useState(false)
+  const [selectedStatsDate, setSelectedStatsDate] = useState('')
 
   const getTodayStr = () => {
     const d = new Date();
@@ -469,7 +469,7 @@ function App() {
     const res = [];
     const curr = new Date(start);
     let count = 0;
-    while (curr <= end && count < 31) {
+    while (curr <= end && count < 180) {
       const y = curr.getFullYear();
       const m = String(curr.getMonth() + 1).padStart(2, '0');
       const d = String(curr.getDate()).padStart(2, '0');
@@ -554,30 +554,92 @@ function App() {
   
   const WEEKS = useMemo(() => generateWeeksForYear(currentYear), [currentYear])
 
-  const exportModalWeeks = useMemo(() => generateWeeksForYear(exportModalYear), [exportModalYear]);
+  const exportRangeDates = useMemo(() => {
+    if (!exportRangeStart || !exportRangeEnd) return [];
+    return getDatesBetween(exportRangeStart, exportRangeEnd);
+  }, [exportRangeStart, exportRangeEnd]);
 
-  const exportModalDates = useMemo(() => {
-    if (exportCustomDatePicker) {
-      const d = new Date(exportCustomDatePicker + 'T00:00:00');
-      if (!isNaN(d.getTime())) {
-        const dayOfWeek = d.getDay(); // 0 = Sun
-        const sun = new Date(d);
-        sun.setDate(d.getDate() - dayOfWeek);
-        const dates = [];
-        for (let i = 0; i < 7; i++) {
-          const cur = new Date(sun);
-          cur.setDate(sun.getDate() + i);
-          const y = cur.getFullYear();
-          const m = String(cur.getMonth() + 1).padStart(2, '0');
-          const day = String(cur.getDate()).padStart(2, '0');
-          dates.push(`${y}-${m}-${day}`);
-        }
-        return dates;
+  const activeStats = useMemo(() => {
+    const targetDate = selectedStatsDate || getTodayStr();
+    let callM = 0; let callE = 0; let callN = 0;
+    let chatM = 0; let chatE = 0; let chatN = 0;
+    let leaderM = 0; let leaderE = 0;
+    let others = {};
+
+    let hasLoadedDateData = false;
+    for (const empId in schedules) {
+      if (schedules[empId]?.[targetDate] !== undefined) {
+        hasLoadedDateData = true;
+        break;
       }
     }
-    const w = exportModalWeeks[exportModalWeekIndex] || exportModalWeeks[0];
-    return w ? w.dates : [];
-  }, [exportCustomDatePicker, exportModalWeeks, exportModalWeekIndex]);
+
+    if (!hasLoadedDateData) {
+      return { ...todayStats, date: targetDate };
+    }
+
+    employees.forEach(emp => {
+      const code = (schedules[emp.id]?.[targetDate] || '').toUpperCase().trim();
+      if (!code || ['OFF','OUT','V','H','M','S','EMERGENCY','-'].includes(code)) return;
+
+      const teamName = emp.teams?.name || teams.find(t => t.id === emp.team_id)?.name || 'No Team';
+      const teamNameLower = teamName.toLowerCase();
+      const empNameLower = (emp.name || '').toLowerCase();
+
+      const morningShifts = ['A', 'AC', 'AB', 'L'];
+      const eveningShifts = ['B', 'BB', 'BC', 'LB'];
+      const nightShifts = ['C'];
+
+      let shiftType = 'other';
+      if (morningShifts.includes(code)) shiftType = 'morning';
+      else if (eveningShifts.includes(code)) shiftType = 'evening';
+      else if (nightShifts.includes(code)) shiftType = 'night';
+
+      // Check Team Leaders specifically (Enkidu = Morning, Younis = Evening)
+      if (teamNameLower.includes('leader') || empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو') || empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
+        if (empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو')) {
+          leaderM++;
+        } else if (empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
+          leaderE++;
+        } else if (shiftType === 'morning') {
+          leaderM++;
+        } else if (shiftType === 'evening') {
+          leaderE++;
+        } else {
+          if (code.startsWith('A') || code === 'L') leaderM++;
+          else leaderE++;
+        }
+        return;
+      }
+
+      const isExcludedTeam = teamNameLower.includes('quality') || 
+                             teamNameLower.includes('trainer') || 
+                             teamNameLower.includes('help desk') || 
+                             teamNameLower.includes('helpdesk');
+
+      if (!isExcludedTeam && teamNameLower.includes('call')) {
+        if (shiftType === 'morning') callM++;
+        else if (shiftType === 'evening') callE++;
+        else if (shiftType === 'night') callN++;
+      } else if (!isExcludedTeam && teamNameLower.includes('chat')) {
+        if (shiftType === 'morning') chatM++;
+        else if (shiftType === 'evening') chatE++;
+        else if (shiftType === 'night') chatN++;
+      } else {
+        if (teamName !== 'No Team') {
+          others[teamName] = (others[teamName] || 0) + 1;
+        }
+      }
+    });
+
+    return {
+      date: targetDate,
+      callMorning: callM, callEvening: callE, callNight: callN,
+      chatMorning: chatM, chatEvening: chatE, chatNight: chatN,
+      teamLeaderMorning: leaderM, teamLeaderEvening: leaderE,
+      otherTeams: others
+    };
+  }, [selectedStatsDate, schedules, employees, teams, todayStats]);
 
   const [employees, setEmployees] = useState([])
   const [schedules, setSchedules] = useState({})
@@ -1038,21 +1100,23 @@ function App() {
       setExportingSystemFile(true);
       showToast("Generating Organization System Excel (.xlsx)...", "info");
 
-      // Target 7 dates of the selected week (Sunday to Saturday)
+      // Target dates of the selected date range
       let targetDates = customTargetDates;
-      if (!targetDates || targetDates.length !== 7) {
-        if (exportModalDates && exportModalDates.length === 7) {
-          targetDates = exportModalDates;
+      if (!targetDates || targetDates.length === 0) {
+        if (exportRangeDates && exportRangeDates.length > 0) {
+          targetDates = exportRangeDates;
+        } else if (exportRangeStart && exportRangeEnd) {
+          targetDates = getDatesBetween(exportRangeStart, exportRangeEnd);
         } else {
           const week = WEEKS[currentWeekIndex];
-          targetDates = (activeCustomDates && activeCustomDates.length === 7) 
+          targetDates = (activeCustomDates && activeCustomDates.length > 0) 
             ? activeCustomDates 
             : (week ? week.dates : activeDates.slice(0, 7));
         }
       }
 
-      if (!targetDates || targetDates.length !== 7) {
-        throw new Error("Please select a 7-day week (Sunday to Saturday) to export.");
+      if (!targetDates || targetDates.length === 0) {
+        throw new Error("Please select a valid date range to export.");
       }
 
       // Fetch fresh schedule data for these dates to guarantee 100% sync
@@ -1269,9 +1333,8 @@ function App() {
     setEmployees(emps);
   }
 
-  async function fetchTodayStats() {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  async function fetchTodayStats(targetDateStr = null) {
+    const targetDate = targetDateStr || selectedStatsDate || getTodayStr();
     
     // Fetch base mappings once
     const empsSnap = await getDocs(collection(db, "employees"));
@@ -1288,7 +1351,7 @@ function App() {
 
     if (unsubStatsRef.current) unsubStatsRef.current();
 
-    const schedQuery = query(collection(db, "schedules"), where("work_date", "==", todayStr));
+    const schedQuery = query(collection(db, "schedules"), where("work_date", "==", targetDate));
     unsubStatsRef.current = onSnapshot(schedQuery, (schedSnap) => {
       let callM = 0; let callE = 0; let callN = 0;
       let chatM = 0; let chatE = 0; let chatN = 0;
@@ -1352,6 +1415,7 @@ function App() {
         }
       });
       setTodayStats({ 
+        date: targetDate,
         callMorning: callM, callEvening: callE, callNight: callN, 
         chatMorning: chatM, chatEvening: chatE, chatNight: chatN, 
         teamLeaderMorning: leaderM, teamLeaderEvening: leaderE,
@@ -1359,6 +1423,12 @@ function App() {
       });
     });
   }
+
+  useEffect(() => {
+    if (selectedStatsDate) {
+      fetchTodayStats(selectedStatsDate);
+    }
+  }, [selectedStatsDate]);
 
   function fetchSchedulesForWeek(weekIdx, year) {
     setSchedLoading(true)
@@ -1796,6 +1866,45 @@ function App() {
     ...teams.map(t => ({ value: t.id, label: t.name }))
   ]
 
+  const renderStatsDateBadge = () => {
+    const today = getTodayStr();
+    const effectiveDate = selectedStatsDate || today;
+    const isToday = effectiveDate === today;
+    const dObj = new Date(effectiveDate + 'T00:00:00');
+    const dayName = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
+    const monthShort = isNaN(dObj.getTime()) ? '' : dObj.toLocaleString('default', { month: 'short' });
+    const dayNum = effectiveDate.split('-')[2] || '';
+
+    return (
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        marginLeft: '6px',
+        padding: '2px 7px',
+        borderRadius: '5px',
+        fontSize: '10px',
+        fontWeight: '800',
+        backgroundColor: isToday 
+          ? (isDark ? 'rgba(15, 118, 66, 0.2)' : '#edf7ee') 
+          : (isDark ? 'rgba(37, 99, 235, 0.2)' : '#eff6ff'),
+        color: isToday ? 'var(--accent-green)' : '#2563eb'
+      }}>
+        <Calendar size={10} />
+        {isToday ? `Today (${dayName} ${dayNum})` : `${dayName} ${dayNum} ${monthShort}`}
+        {!isToday && (
+          <span 
+            onClick={(e) => { e.stopPropagation(); setSelectedStatsDate(today); }}
+            style={{ marginLeft: '4px', cursor: 'pointer', textDecoration: 'underline', color: 'var(--text-muted)' }}
+            title="Reset dashboard to today"
+          >
+            ↺ Today
+          </span>
+        )}
+      </span>
+    );
+  };
+
   return (
     <div className={`${isDark ? 'dark' : ''} min-h-screen transition-colors duration-200`} style={{ backgroundColor: 'var(--bg-main)' }} dir="ltr">
       
@@ -1967,20 +2076,22 @@ function App() {
           {/* Call Team Card */}
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
             <div>
-              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px' }}>📞 Call Team <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
+              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px', display: 'flex', alignItems: 'center' }}>
+                📞 Call Team {renderStatsDateBadge()}
+              </p>
               <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                 <div style={{ minWidth: '65px' }}>
-                  <div style={{ fontSize: '30px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>{todayStats.callMorning}</div>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>{activeStats.callMorning}</div>
                   <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌅 Morning</div>
                 </div>
                 <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
                 <div style={{ minWidth: '65px' }}>
-                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>{todayStats.callEvening}</div>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>{activeStats.callEvening}</div>
                   <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌆 Evening</div>
                 </div>
                 <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
                 <div style={{ minWidth: '65px' }}>
-                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#8B5CF6', lineHeight: '1' }}>{todayStats.callNight || 0}</div>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#8B5CF6', lineHeight: '1' }}>{activeStats.callNight || 0}</div>
                   <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌙 Overnight</div>
                 </div>
               </div>
@@ -1993,20 +2104,22 @@ function App() {
           {/* Chat Team Card */}
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
             <div>
-              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px' }}>💬 Chat Team <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
+              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px', display: 'flex', alignItems: 'center' }}>
+                💬 Chat Team {renderStatsDateBadge()}
+              </p>
               <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                 <div style={{ minWidth: '65px' }}>
-                  <div style={{ fontSize: '30px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>{todayStats.chatMorning}</div>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>{activeStats.chatMorning}</div>
                   <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌅 Morning</div>
                 </div>
                 <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
                 <div style={{ minWidth: '65px' }}>
-                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>{todayStats.chatEvening}</div>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>{activeStats.chatEvening}</div>
                   <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌆 Evening</div>
                 </div>
                 <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
                 <div style={{ minWidth: '65px' }}>
-                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#8B5CF6', lineHeight: '1' }}>{todayStats.chatNight || 0}</div>
+                  <div style={{ fontSize: '30px', fontWeight: '900', color: '#8B5CF6', lineHeight: '1' }}>{activeStats.chatNight || 0}</div>
                   <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>🌙 Overnight</div>
                 </div>
               </div>
@@ -2019,14 +2132,16 @@ function App() {
           {/* Other Teams Card */}
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
             <div style={{ flex: 1, marginRight: '12px' }}>
-              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px' }}>🏢 Other Teams <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
+              <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px', display: 'flex', alignItems: 'center' }}>
+                🏢 Other Teams {renderStatsDateBadge()}
+              </p>
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* Team Leaders - Split into Morning & Evening */}
                 <div style={{ minWidth: '130px' }}>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontSize: '26px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>
-                        {todayStats.teamLeaderMorning || 0}
+                        {activeStats.teamLeaderMorning || 0}
                       </div>
                       <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>
                         🌅 Morning
@@ -2035,7 +2150,7 @@ function App() {
                     <div style={{ width: '1px', height: '28px', backgroundColor: 'var(--border-color)' }}></div>
                     <div>
                       <div style={{ fontSize: '26px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>
-                        {todayStats.teamLeaderEvening || 0}
+                        {activeStats.teamLeaderEvening || 0}
                       </div>
                       <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>
                         🌆 Evening
@@ -2049,7 +2164,7 @@ function App() {
                 </div>
 
                 {/* Other Teams (Quality, Help Desk, etc.) */}
-                {Object.entries(todayStats.otherTeams)
+                {Object.entries(activeStats.otherTeams)
                   .filter(([team]) => !team.toLowerCase().includes('leader'))
                   .map(([team, count]) => {
                     let teamColor = 'var(--text-main)';
@@ -2136,12 +2251,19 @@ function App() {
             </React.Fragment>
           )}
 
-          {/* Export System Excel Button - Positioned right next to Manage */}
+          {/* Export Button - Identical styling to Manage / History / Access */}
           <button 
             onClick={() => {
-              setExportModalYear(currentYear);
-              setExportModalWeekIndex(currentWeekIndex);
-              setExportCustomDatePicker('');
+              const week = WEEKS[currentWeekIndex];
+              if (!exportRangeStart || !exportRangeEnd) {
+                if (week && week.dates && week.dates.length === 7) {
+                  setExportRangeStart(week.dates[0]);
+                  setExportRangeEnd(week.dates[6]);
+                } else if (activeDates && activeDates.length > 0) {
+                  setExportRangeStart(activeDates[0]);
+                  setExportRangeEnd(activeDates[activeDates.length - 1]);
+                }
+              }
               setShowExportModal(true);
             }}
             style={{ 
@@ -2149,22 +2271,21 @@ function App() {
               alignItems: 'center', 
               gap: '8px', 
               padding: '10px 16px', 
-              borderRadius: '6px', 
+              borderRadius: '4px', 
               fontSize: '12px', 
               fontWeight: 'bold', 
               cursor: 'pointer', 
-              backgroundColor: '#107c41', 
-              border: 'none', 
-              color: '#FFFFFF', 
-              boxShadow: '0 2px 6px rgba(16, 124, 65, 0.25)', 
+              backgroundColor: 'var(--bg-card)', 
+              border: '1px solid var(--border-color)', 
+              color: 'var(--text-main)', 
               transition: 'background-color 0.15s',
               whiteSpace: 'nowrap'
             }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0d6334'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#107c41'}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--bg-card)'}
             title="Export schedule in organization system Excel format (.xlsx)"
           >
-            <FileSpreadsheet size={16} /> Export System (.xlsx)
+            <FileSpreadsheet size={16} style={{ color: 'var(--accent-green)' }} /> Export
           </button>
         </div>
 
@@ -2781,36 +2902,49 @@ function App() {
                       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                       const isToday = date === todayStr;
                       const isCustom = activeCustomDates && activeCustomDates.includes(date);
+                      const isSelectedDate = selectedStatsDate ? date === selectedStatsDate : isToday;
                       const dObj = new Date(date + 'T00:00:00');
                       const dayName = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
                       const monthShort = isNaN(dObj.getTime()) ? '' : dObj.toLocaleString('default', { month: 'short' });
                       const dayNum = date.split('-')[2];
 
                       // 100% solid, fully opaque hex backgrounds - prevents any scroll content bleeding through
-                      const solidHeaderBg = isToday 
+                      const solidHeaderBg = isSelectedDate
+                        ? (isDark ? '#06381e' : '#e6f7ec')
+                        : isToday 
                         ? (isDark ? '#062d1a' : '#edf7ee')
                         : isCustom
                         ? (isDark ? '#0e2340' : '#ebf5ff')
                         : 'var(--header-bg)';
 
                       return (
-                        <th key={date} className="date-col" style={{ 
-                          position: 'sticky',
-                          top: 0,
-                          zIndex: 40,
-                          backgroundColor: solidHeaderBg,
-                          opacity: 1,
-                          padding: '0 4px', 
-                          height: '32px',
-                          borderBottom: isToday 
-                            ? '2px solid var(--accent-green)' 
-                            : isCustom 
-                            ? '2px solid #2563eb' 
-                            : '1px solid var(--border-color)',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                          verticalAlign: 'middle',
-                          transition: 'background-color 0.15s'
-                        }}>
+                        <th 
+                          key={date} 
+                          className="date-col" 
+                          onClick={() => setSelectedStatsDate(date)}
+                          title={`Click to update top dashboard staffing numbers for ${dayName} (${date})`}
+                          style={{ 
+                            position: 'sticky',
+                            top: 0,
+                            zIndex: 40,
+                            backgroundColor: solidHeaderBg,
+                            opacity: 1,
+                            padding: '0 4px', 
+                            height: '32px',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            borderBottom: isSelectedDate 
+                              ? '3px solid var(--accent-green)' 
+                              : isToday 
+                              ? '2px solid var(--accent-green)' 
+                              : isCustom 
+                              ? '2px solid #2563eb' 
+                              : '1px solid var(--border-color)',
+                            boxShadow: isSelectedDate ? '0 2px 8px rgba(16, 124, 65, 0.25)' : '0 2px 4px rgba(0,0,0,0.05)',
+                            verticalAlign: 'middle',
+                            transition: 'all 0.15s'
+                          }}
+                        >
                           <div style={{ 
                             display: 'flex', 
                             alignItems: 'center', 
@@ -2821,8 +2955,8 @@ function App() {
                           }}>
                             <span style={{ 
                               fontSize: '11px', 
-                              fontWeight: '700', 
-                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
+                              fontWeight: isSelectedDate ? '800' : '700', 
+                              color: isSelectedDate ? 'var(--accent-green)' : isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
                               letterSpacing: '0.02em',
                               lineHeight: 1
                             }}>
@@ -2830,29 +2964,30 @@ function App() {
                             </span>
                             <span style={{ 
                               fontSize: '12px', 
-                              fontWeight: '800',
-                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-main)',
+                              fontWeight: isSelectedDate ? '900' : '800',
+                              color: isSelectedDate ? 'var(--accent-green)' : isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-main)',
                               lineHeight: 1
                             }}>
                               {dayNum}
                             </span>
                             <span style={{ 
                               fontSize: '10px', 
-                              fontWeight: '500', 
-                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)',
-                              opacity: 0.7,
+                              fontWeight: isSelectedDate ? '700' : '500', 
+                              color: isSelectedDate ? 'var(--accent-green)' : isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)',
+                              opacity: isSelectedDate ? 1 : 0.7,
                               lineHeight: 1
                             }}>
                               {monthShort}
                             </span>
-                            {isToday && (
+                            {isSelectedDate && (
                               <span style={{
-                                width: '5px',
-                                height: '5px',
+                                width: '6px',
+                                height: '6px',
                                 borderRadius: '50%',
                                 backgroundColor: 'var(--accent-green)',
-                                display: 'inline-block'
-                              }} title="Today" />
+                                display: 'inline-block',
+                                boxShadow: '0 0 4px var(--accent-green)'
+                              }} title="Active dashboard date" />
                             )}
                           </div>
                         </th>
@@ -4308,9 +4443,16 @@ function App() {
                     type="button"
                     onClick={() => {
                       setShowProfileModal(false);
-                      setExportModalYear(currentYear);
-                      setExportModalWeekIndex(currentWeekIndex);
-                      setExportCustomDatePicker('');
+                      const week = WEEKS[currentWeekIndex];
+                      if (!exportRangeStart || !exportRangeEnd) {
+                        if (week && week.dates && week.dates.length === 7) {
+                          setExportRangeStart(week.dates[0]);
+                          setExportRangeEnd(week.dates[6]);
+                        } else if (activeDates && activeDates.length > 0) {
+                          setExportRangeStart(activeDates[0]);
+                          setExportRangeEnd(activeDates[activeDates.length - 1]);
+                        }
+                      }
                       setShowExportModal(true);
                     }}
                     style={{
@@ -4382,7 +4524,7 @@ function App() {
         </div>
       )}
 
-      {/* Small Modal: Export Organization System Excel */}
+      {/* Modern Simple Modal: Export Organization System Excel (Date Range) */}
       {showExportModal && (
         <div style={{ 
           position: 'fixed', 
@@ -4392,60 +4534,57 @@ function App() {
           bottom: 0, 
           backgroundColor: 'rgba(15, 23, 42, 0.65)', 
           backdropFilter: 'blur(8px)', 
-          WebkitBackdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)', 
           zIndex: 1000, 
           display: 'flex', 
           alignItems: 'center', 
-          justifyContent: 'center',
-          padding: '16px'
+          justifyContent: 'center', 
+          padding: '16px' 
         }}>
           <div style={{ 
             backgroundColor: 'var(--bg-card)', 
-            borderRadius: '20px', 
-            padding: '24px', 
+            borderRadius: '16px', 
+            padding: '22px', 
             width: '100%', 
-            maxWidth: '520px', 
-            maxHeight: '92vh', 
-            overflowY: 'auto', 
+            maxWidth: '430px', 
             display: 'flex', 
             flexDirection: 'column', 
-            gap: '18px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', 
-            border: '1px solid var(--border-color)',
-            animation: 'fadeIn 0.2s ease-out'
+            gap: '16px', 
+            boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.35)', 
+            border: '1px solid var(--border-color)', 
+            animation: 'fadeIn 0.15s ease-out' 
           }}>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #107c41 0%, #15803d 100%)',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(16, 124, 65, 0.12)',
+                  color: '#107c41',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  boxShadow: '0 4px 12px rgba(16, 124, 65, 0.3)'
+                  justifyContent: 'center'
                 }}>
                   <FileSpreadsheet size={20} />
                 </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
-                    Export Organization System Excel
-                  </h2>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Official 47-employee format (.xlsx) for direct system upload
-                  </span>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+                    Export Schedule (.xlsx)
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Organization System Format · 47 Employees
+                  </div>
                 </div>
               </div>
               <button 
                 type="button"
                 onClick={() => setShowExportModal(false)} 
                 style={{ 
-                  width: '32px', 
-                  height: '32px', 
-                  borderRadius: '50%', 
+                  width: '28px', 
+                  height: '28px', 
+                  borderRadius: '6px', 
                   background: 'none', 
                   border: '1px solid var(--border-color)', 
                   color: 'var(--text-muted)', 
@@ -4453,8 +4592,8 @@ function App() {
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
-                  fontSize: '14px',
-                  transition: 'all 0.2s' 
+                  fontSize: '13px',
+                  transition: 'all 0.15s' 
                 }}
                 onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.color = 'var(--text-main)'; }}
                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
@@ -4463,192 +4602,200 @@ function App() {
               </button>
             </div>
 
-            {/* Date / Week Selection Card */}
-            <div style={{
-              backgroundColor: 'var(--header-bg)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '14px',
-              padding: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '14px'
-            }}>
-              <div style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Calendar size={14} style={{ color: '#107c41' }} />
-                <span>Select Week or Specific Date to Export</span>
-              </div>
-
-              {/* 1. Year and Week Dropdowns */}
-              <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '8px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Year
-                  </label>
-                  <select
-                    value={exportModalYear}
-                    onChange={(e) => {
-                      const yr = Number(e.target.value);
-                      setExportModalYear(yr);
-                      setExportModalWeekIndex(0);
-                      setExportCustomDatePicker('');
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border-color)',
-                      backgroundColor: 'var(--bg-card)',
-                      color: 'var(--text-main)',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      outline: 'none'
-                    }}
-                  >
-                    {YEARS.map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Week Schedule (Sun → Sat)
-                  </label>
-                  <select
-                    value={exportModalWeekIndex}
-                    onChange={(e) => {
-                      setExportModalWeekIndex(Number(e.target.value));
-                      setExportCustomDatePicker('');
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border-color)',
-                      backgroundColor: 'var(--bg-card)',
-                      color: 'var(--text-main)',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      outline: 'none'
-                    }}
-                  >
-                    {exportModalWeeks.map((w, idx) => (
-                      <option key={w.name} value={idx}>
-                        {w.name}: {w.dates[0]} to {w.dates[6]} {idx === currentWeekIndex && exportModalYear === currentYear ? '★ (Current)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* 2. Or Pick Any Date */}
-              <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '10px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  <span>Or Pick Any Date (auto-selects its full week):</span>
-                  {exportCustomDatePicker && (
-                    <button
-                      type="button"
-                      onClick={() => setExportCustomDatePicker('')}
-                      style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '700', cursor: 'pointer', padding: 0 }}
-                    >
-                      Reset to Week Dropdown
-                    </button>
-                  )}
-                </label>
-                <input
-                  type="date"
-                  value={exportCustomDatePicker}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setExportCustomDatePicker(val);
-                    if (val) {
-                      const yr = parseInt(val.slice(0, 4), 10);
-                      if (yr && YEARS.includes(yr)) {
-                        setExportModalYear(yr);
-                      }
+            {/* Quick Range Presets */}
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                Quick Presets:
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const w = WEEKS[currentWeekIndex];
+                    if (w && w.dates) {
+                      setExportRangeStart(w.dates[0]);
+                      setExportRangeEnd(w.dates[6]);
                     }
                   }}
                   style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '6px',
                     border: '1px solid var(--border-color)',
-                    backgroundColor: 'var(--bg-card)',
+                    backgroundColor: 'var(--header-bg)',
                     color: 'var(--text-main)',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    outline: 'none',
-                    boxSizing: 'border-box'
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
                   }}
-                />
-              </div>
-
-              {/* 3. 7-Day Preview Badges */}
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  7-Day Roster Columns Preview ({exportModalDates.length === 7 ? `${exportModalDates[0]} → ${exportModalDates[6]}` : 'Selected Dates'}):
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-                  {exportModalDates.map(dStr => {
-                    const dObj = new Date(dStr + 'T00:00:00');
-                    const day = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
-                    const monthDay = dStr.slice(5);
-                    return (
-                      <div
-                        key={dStr}
-                        style={{
-                          backgroundColor: 'var(--bg-card)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '6px',
-                          padding: '6px 2px',
-                          textAlign: 'center'
-                        }}
-                      >
-                        <div style={{ fontSize: '10px', fontWeight: '800', color: '#107c41' }}>{day}</div>
-                        <div style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)' }}>{monthDay}</div>
-                      </div>
-                    );
-                  })}
-                </div>
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--header-bg)'}
+                >
+                  Current Week
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextIdx = Math.min(currentWeekIndex + 1, WEEKS.length - 1);
+                    const nw = WEEKS[nextIdx];
+                    if (nw && nw.dates) {
+                      setExportRangeStart(nw.dates[0]);
+                      setExportRangeEnd(nw.dates[6]);
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--header-bg)',
+                    color: 'var(--text-main)',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--header-bg)'}
+                >
+                  Next Week
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const yr = now.getFullYear();
+                    const mo = now.getMonth();
+                    const startStr = `${yr}-${String(mo + 1).padStart(2, '0')}-01`;
+                    const lastD = new Date(yr, mo + 1, 0).getDate();
+                    const endStr = `${yr}-${String(mo + 1).padStart(2, '0')}-${String(lastD).padStart(2, '0')}`;
+                    setExportRangeStart(startStr);
+                    setExportRangeEnd(endStr);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--header-bg)',
+                    color: 'var(--text-main)',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--header-bg)'}
+                >
+                  This Month
+                </button>
               </div>
             </div>
 
-            {/* Specifications Card */}
+            {/* Date Range Inputs */}
             <div style={{
-              backgroundColor: isDark ? 'rgba(16, 124, 65, 0.12)' : 'rgba(16, 124, 65, 0.06)',
-              border: '1px solid rgba(16, 124, 65, 0.25)',
-              borderRadius: '12px',
-              padding: '12px 14px',
+              backgroundColor: 'var(--header-bg)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              padding: '12px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '6px',
-              fontSize: '11px'
+              gap: '10px'
             }}>
-              <div style={{ fontWeight: '800', color: '#107c41', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Check size={13} />
-                <span>Organization System Specs Guaranteed</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={exportRangeStart}
+                    onChange={(e) => setExportRangeStart(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={exportRangeEnd}
+                    onChange={(e) => setExportRangeEnd(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
               </div>
-              <div style={{ color: 'var(--text-muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                <div>👥 <b>47 Employees</b> (1-to-1 mapped)</div>
-                <div>🚫 <b>Zero Duplicates</b> (Clean official list)</div>
-                <div>📁 <b>Filename:</b> Sheet-YYYY-MM-DD...</div>
-                <div>⚙️ <b>Shift Codes:</b> 55939 / 55940 / etc.</div>
+
+              {/* Range Status Summary */}
+              <div style={{
+                fontSize: '11px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                backgroundColor: exportRangeDates.length > 0 ? (isDark ? 'rgba(16, 124, 65, 0.15)' : '#e6f7ec') : 'var(--bg-card)',
+                color: exportRangeDates.length > 0 ? '#107c41' : 'var(--text-muted)',
+                border: '1px solid var(--border-color)'
+              }}>
+                <span>
+                  {exportRangeDates.length > 0 
+                    ? `📅 ${exportRangeDates.length} ${exportRangeDates.length === 1 ? 'day' : 'days'} (${exportRangeDates[0]} → ${exportRangeDates[exportRangeDates.length - 1]})`
+                    : exportRangeStart && exportRangeEnd && exportRangeStart > exportRangeEnd
+                    ? '⚠️ "To" date must be after "From" date'
+                    : 'Select valid start & end dates'}
+                </span>
+                {exportRangeDates.length > 0 && (
+                  <span style={{ fontSize: '10px', fontWeight: '800' }}>✓ Ready</span>
+                )}
               </div>
             </div>
 
-            {/* Actions */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+            {/* Quick Specs Badges */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', padding: '0 2px' }}>
+              <span>👥 <b>47 Employees</b></span>
+              <span>🔒 <b>Zero Duplicates</b></span>
+              <span>⚡ <b>Exact Shift Codes</b></span>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '2px' }}>
               <button
                 type="button"
                 onClick={() => setShowExportModal(false)}
                 style={{
-                  padding: '10px 18px',
-                  borderRadius: '10px',
+                  padding: '9px 16px',
+                  borderRadius: '6px',
                   border: '1px solid var(--border-color)',
                   backgroundColor: 'transparent',
                   color: 'var(--text-main)',
                   fontWeight: '700',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   cursor: 'pointer'
                 }}
               >
@@ -4657,36 +4804,36 @@ function App() {
 
               <button
                 type="button"
-                disabled={exportingSystemFile || exportModalDates.length !== 7}
-                onClick={() => handleExportSystemExcel(exportModalDates)}
+                disabled={exportingSystemFile || exportRangeDates.length === 0}
+                onClick={() => handleExportSystemExcel(exportRangeDates)}
                 style={{
-                  padding: '10px 22px',
-                  borderRadius: '10px',
+                  padding: '9px 18px',
+                  borderRadius: '6px',
                   border: 'none',
                   backgroundColor: '#107c41',
                   color: '#FFFFFF',
                   fontWeight: '800',
-                  fontSize: '13px',
-                  cursor: exportingSystemFile ? 'not-allowed' : 'pointer',
-                  opacity: exportingSystemFile ? 0.75 : 1,
+                  fontSize: '12px',
+                  cursor: (exportingSystemFile || exportRangeDates.length === 0) ? 'not-allowed' : 'pointer',
+                  opacity: (exportingSystemFile || exportRangeDates.length === 0) ? 0.65 : 1,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: '0 4px 14px rgba(16, 124, 65, 0.35)',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(16, 124, 65, 0.25)',
                   transition: 'all 0.15s'
                 }}
-                onMouseEnter={e => !exportingSystemFile && (e.currentTarget.style.backgroundColor = '#0d6334')}
-                onMouseLeave={e => !exportingSystemFile && (e.currentTarget.style.backgroundColor = '#107c41')}
+                onMouseEnter={e => !(exportingSystemFile || exportRangeDates.length === 0) && (e.currentTarget.style.backgroundColor = '#0d6334')}
+                onMouseLeave={e => !(exportingSystemFile || exportRangeDates.length === 0) && (e.currentTarget.style.backgroundColor = '#107c41')}
               >
                 {exportingSystemFile ? (
                   <>
-                    <RefreshCw size={15} className="animate-spin" />
-                    <span>Generating .xlsx...</span>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Exporting...</span>
                   </>
                 ) : (
                   <>
-                    <FileSpreadsheet size={16} />
-                    <span>Download System Excel (.xlsx)</span>
+                    <FileSpreadsheet size={15} />
+                    <span>Download Excel (.xlsx)</span>
                   </>
                 )}
               </button>
