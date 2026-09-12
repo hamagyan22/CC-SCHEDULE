@@ -4,10 +4,99 @@ import { db, auth } from './firebase'
 import { collection, getDocs, doc, setDoc, deleteDoc, addDoc, updateDoc, query, where, writeBatch, onSnapshot, orderBy, limit } from "firebase/firestore";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote, Award, Shield, GraduationCap, Headset, Folder, Cloud, Database, Download, Check, UploadCloud, RefreshCw, FileSpreadsheet, ExternalLink, Camera, Mail, Lock, User } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const YEARS = [2026, 2027, 2028, 2029, 2030]
+
+// Organization System Roster & Shift Mapping
+const SYSTEM_EMPLOYEES = [
+  { empNo: 507, name: 'Mokhlad Midhat Ali' },
+  { empNo: 347, name: 'Haseeb Adeeb Muhei' },
+  { empNo: 376, name: 'Zainab Khalid Rashid' },
+  { empNo: 374, name: 'Yousif Rashid راشد Darwish' },
+  { empNo: 334, name: 'Ahmed Jalil Mohammed' },
+  { empNo: 377, name: 'Zhalla Sherzad Salam' },
+  { empNo: 424, name: 'Marwa Khalil Khala' },
+  { empNo: 342, name: 'Azad Mohammed Abdullah' },
+  { empNo: 348, name: 'Hevr Adnan Ismail' },
+  { empNo: 358, name: 'Muzhda Omar Ali' },
+  { empNo: 381, name: 'Shahab Ahmed Mohammed' },
+  { empNo: 339, name: 'Alla Satar Karim' },
+  { empNo: 373, name: 'Younis Kamal Ahmed' },
+  { empNo: 375, name: 'Zahra Yousif Tofiq' },
+  { empNo: 382, name: 'Ismail Majeed Ahmad' },
+  { empNo: 368, name: 'Saja Bashar Anwar' },
+  { empNo: 349, name: 'Kani Sami Othman' },
+  { empNo: 340, name: 'Ankidu Buya Saada' },
+  { empNo: 345, name: 'Frmesk Younis Auzer' },
+  { empNo: 371, name: 'Soma Sherko Muhammed' },
+  { empNo: 336, name: 'Ahmed Rostam Omar' },
+  { empNo: 506, name: 'Laven Musleh Khaleel' },
+  { empNo: 350, name: 'Lana Hekmat Rafiq' },
+  { empNo: 351, name: 'Isra Kamil Mohammed' },
+  { empNo: 372, name: 'Taban Sirvan Jalal' },
+  { empNo: 360, name: 'Navin Moath Mohammed' },
+  { empNo: 362, name: 'Osama Saadi Mahmoud' },
+  { empNo: 365, name: 'Rasan Ismail Mousa' },
+  { empNo: 367, name: 'Sana Dler Fuad' },
+  { empNo: 356, name: 'Mohammed Jihad Nuri' },
+  { empNo: 369, name: 'Saven Sarip Hussien' },
+  { empNo: 370, name: 'Shireen Weise Saeed' },
+  { empNo: 357, name: 'Mohammad Dilshad Omar' },
+  { empNo: 341, name: 'Aya Yassin Abdulrahman' },
+  { empNo: 366, name: 'Serbaz Namiq نامق Hasan' },
+  { empNo: 337, name: 'Akar Dyar Omar' },
+  { empNo: 221, name: 'Zhala Sherzad khoudhur' },
+  { empNo: 584, name: 'Salam Saddam Mohammed Rasheed' },
+  { empNo: 585, name: 'Ammar Hussain Salih' },
+  { empNo: 586, name: 'Haneen Abdulkarim Iskandar' },
+  { empNo: 353, name: 'Mohammad Azar Saber' },
+  { empNo: 343, name: 'Bana Firya Ahmed' },
+  { empNo: 344, name: 'Dhuka Khanjar Nuri' },
+  { empNo: 364, name: 'Rabar Majid Mohammed' },
+  { empNo: 691, name: 'Marwa Shaalan Hussein' },
+  { empNo: 692, name: 'Mohammed Saman Salim' },
+  { empNo: 575, name: 'Kazhwan Wrga Ali' },
+];
+
+const SHIFT_SYSTEM_CODE_MAP = {
+  'A': 'A Shift - 55939',
+  'B': 'B Shift - 55940',
+  'C': 'C Shift - 55941',
+  'BB': 'BB Shift - 59261',
+  'BC': 'BC Shift - 59262',
+  'AC': 'AC Shift - 59263',
+  'L': 'L Shift - 59268',
+  'OFF': 'Day Off - 53651',
+  'OUT': 'Day Off - 53651',
+  'V': 'Day Off - 53651',
+  'H': 'Day Off - 53651',
+  'S': 'Day Off - 53651',
+  'EMERGENCY': 'Day Off - 53651',
+};
+
+function formatShiftForSystem(shiftCode) {
+  if (!shiftCode || shiftCode.trim() === '' || shiftCode.trim() === '-') {
+    return 'Day Off - 53651';
+  }
+  const clean = shiftCode.trim().toUpperCase();
+  if (SHIFT_SYSTEM_CODE_MAP[clean]) {
+    return SHIFT_SYSTEM_CODE_MAP[clean];
+  }
+  if (clean.includes('-')) {
+    return shiftCode.trim();
+  }
+  if (clean === 'BB') return 'BB Shift - 59261';
+  if (clean.startsWith('A') && clean.endsWith('C')) return 'AC Shift - 59263';
+  if (clean.startsWith('B') && clean.endsWith('C')) return 'BC Shift - 59262';
+  if (clean.startsWith('A')) return 'A Shift - 55939';
+  if (clean.startsWith('B')) return 'B Shift - 55940';
+  if (clean.startsWith('C')) return 'C Shift - 55941';
+  if (clean.startsWith('L')) return 'L Shift - 59268';
+  return `${shiftCode.trim()} - 53651`;
+}
 
 function generateWeeksForYear(year) {
   const weeks = []
@@ -909,6 +998,125 @@ function App() {
       URL.revokeObjectURL(url);
       showToast("CSV for Google Sheets exported successfully!", "success");
     } catch (err) {
+      showToast(`Export error: ${err.message}`);
+    }
+  };
+
+  const handleExportSystemExcel = async () => {
+    try {
+      showToast("Generating Organization System Excel (.xlsx)...", "info");
+
+      // Target 7 dates of the selected week (Sunday to Saturday)
+      const week = WEEKS[currentWeekIndex];
+      const targetDates = (activeCustomDates && activeCustomDates.length === 7) 
+        ? activeCustomDates 
+        : (week ? week.dates : activeDates.slice(0, 7));
+
+      // Fetch fresh schedule data for these dates to guarantee 100% sync
+      const minDate = targetDates[0];
+      const maxDate = targetDates[targetDates.length - 1];
+      const schedQuery = query(
+        collection(db, "schedules"),
+        where("work_date", ">=", minDate),
+        where("work_date", "<=", maxDate)
+      );
+      const schedSnap = await getDocs(schedQuery);
+      const weekSchedMap = {};
+      schedSnap.forEach(dSnap => {
+        const s = dSnap.data();
+        if (!weekSchedMap[s.employee_id]) weekSchedMap[s.employee_id] = {};
+        weekSchedMap[s.employee_id][s.work_date] = s.shift_code || '';
+      });
+
+      // Headers matching Image 1:
+      // Column A: 'Employment Number'
+      // Column B: 'Employee name'
+      // Columns C-I: 'YYYY-MM-DD Day'
+      const headers = [
+        'Employment Number',
+        'Employee name',
+        ...targetDates.map(date => {
+          const dObj = new Date(date + 'T00:00:00');
+          const dayName = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
+          return `${date} ${dayName}`;
+        })
+      ];
+
+      // Build rows in the exact order of the organization's system
+      const rows = [];
+      const matchedAppEmpIds = new Set();
+
+      SYSTEM_EMPLOYEES.forEach(sysEmp => {
+        const sysClean = sysEmp.name.toLowerCase().replace(/[\u0600-\u06FF]/g, '').replace(/\s+/g, ' ').trim();
+        const sysWords = sysClean.split(' ').filter(w => w.length > 2);
+
+        const appEmp = employees.find(e => {
+          if (!e.name) return false;
+          if (e.employment_number && Number(e.employment_number) === sysEmp.empNo) return true;
+          const eClean = e.name.toLowerCase().replace(/[\u0600-\u06FF]/g, '').replace(/\s+/g, ' ').trim();
+          if (eClean === sysClean) return true;
+          if (eClean.includes(sysClean) || sysClean.includes(eClean)) return true;
+          if (sysWords.length >= 2 && sysWords.every(w => eClean.includes(w))) return true;
+          if ((sysClean.includes('ankidu') || sysClean.includes('enkidu')) && (eClean.includes('ankidu') || eClean.includes('enkidu'))) return true;
+          if (sysClean.includes('younis') && (eClean.includes('younis') || eClean.includes('yonis'))) return true;
+          return false;
+        });
+
+        if (appEmp) matchedAppEmpIds.add(appEmp.id);
+
+        const row = [
+          sysEmp.empNo,
+          sysEmp.name,
+          ...targetDates.map(date => {
+            const shiftCode = (appEmp && weekSchedMap[appEmp.id]?.[date]) || 
+                              (appEmp && schedules[appEmp.id]?.[date]) || 
+                              '';
+            return formatShiftForSystem(shiftCode);
+          })
+        ];
+        rows.push(row);
+      });
+
+      // Also append any extra employees in the app not in SYSTEM_EMPLOYEES
+      employees.forEach(appEmp => {
+        if (!matchedAppEmpIds.has(appEmp.id)) {
+          const row = [
+            appEmp.employment_number || '',
+            appEmp.name,
+            ...targetDates.map(date => {
+              const shiftCode = weekSchedMap[appEmp.id]?.[date] || schedules[appEmp.id]?.[date] || '';
+              return formatShiftForSystem(shiftCode);
+            })
+          ];
+          rows.push(row);
+        }
+      });
+
+      // Create sheet & workbook
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 18 },
+        { wch: 32 },
+        ...targetDates.map(() => ({ wch: 18 }))
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+      // Filename exactly matching Image 2: Sheet-YYYY-MM-DD-HH-mm-ss.xlsx
+      const now = new Date();
+      const YYYY = now.getFullYear();
+      const MM = String(now.getMonth() + 1).padStart(2, '0');
+      const DD = String(now.getDate()).padStart(2, '0');
+      const HH = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const filename = `Sheet-${YYYY}-${MM}-${DD}-${HH}-${mm}-${ss}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+      showToast(`✓ Exported ${filename} successfully in system format!`, "success");
+    } catch (err) {
+      console.error("System Excel export error:", err);
       showToast(`Export error: ${err.message}`);
     }
   };
@@ -1851,6 +2059,31 @@ function App() {
               </div>
             )}
           </div>
+
+          <button 
+            onClick={handleExportSystemExcel}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              padding: '10px 16px', 
+              borderRadius: '6px', 
+              fontSize: '12px', 
+              fontWeight: 'bold', 
+              cursor: 'pointer', 
+              backgroundColor: '#107c41', 
+              border: 'none', 
+              color: '#FFFFFF', 
+              boxShadow: '0 2px 6px rgba(16, 124, 65, 0.25)', 
+              transition: 'background-color 0.15s',
+              whiteSpace: 'nowrap'
+            }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0d6334'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#107c41'}
+            title="Export schedule in organization system Excel format (.xlsx)"
+          >
+            <FileSpreadsheet size={16} /> Export System (.xlsx)
+          </button>
           
           {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && (
             <React.Fragment>
@@ -2356,6 +2589,34 @@ function App() {
                   ]}
                   icon={<Users size={14} />}
                 />
+
+                <button
+                  onClick={handleExportSystemExcel}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '36px',
+                    padding: '0 12px',
+                    borderRadius: '6px',
+                    backgroundColor: '#107c41',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    fontWeight: '700',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(16, 124, 65, 0.3)',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s',
+                    flexShrink: 0
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0d6334'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#107c41'}
+                  title="Export weekly schedule in organization system Excel format (.xlsx)"
+                >
+                  <FileSpreadsheet size={15} />
+                  <span>Export System (.xlsx)</span>
+                </button>
               </div>
 
               <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 6px', flexShrink: 0 }}></div>
@@ -4008,6 +4269,31 @@ function App() {
                   >
                     <Database size={13} style={{ color: '#2563eb' }} />
                     Download JSON
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportSystemExcel}
+                    style={{
+                      gridColumn: 'span 2',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #107c41',
+                      backgroundColor: isDark ? 'rgba(16, 124, 65, 0.15)' : '#edf7ee',
+                      color: '#107c41',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                    title="Export schedule in organization system Excel format (.xlsx)"
+                  >
+                    <FileSpreadsheet size={15} style={{ color: '#107c41' }} />
+                    Export Organization System Excel (.xlsx)
                   </button>
                 </div>
               </div>
