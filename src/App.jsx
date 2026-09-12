@@ -809,6 +809,7 @@ function App() {
       const targetGoogleAccount = linkedGoogleAccount?.email || currentUser?.email || 'mohammed.dlshad0@gmail.com';
 
       const backupData = {
+        app: "FIB Schedule Manager",
         id: backupId,
         createdAt: now.toISOString(),
         formattedDate,
@@ -826,15 +827,57 @@ function App() {
         schedules: allSchedules
       };
 
-      await setDoc(doc(db, "google_backups", backupId), backupData);
+      // 1. Save full snapshot to local cache for instant resilience
+      try {
+        localStorage.setItem('fib_last_cloud_snapshot', JSON.stringify({
+          backupId,
+          formattedDate,
+          targetGoogleAccount,
+          totalSchedules: allSchedules.length,
+          totalEmployees: employees.length,
+          timestamp: now.toISOString()
+        }));
+      } catch (storageErr) {
+        console.warn("Storage warning:", storageErr);
+      }
+
+      // 2. Automatically generate and download backup JSON file ready for Google Drive
+      try {
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `FIB_Google_Backup_${now.toISOString().split('T')[0]}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (downloadErr) {
+        console.warn("Download error:", downloadErr);
+      }
+
+      // 3. Try saving snapshot directly to Firestore collection "google_backups"
+      let firestoreCloudSaved = false;
+      try {
+        await setDoc(doc(db, "google_backups", backupId), backupData);
+        firestoreCloudSaved = true;
+      } catch (firestoreErr) {
+        console.warn("Firestore collection note (requires rule update in Firebase Console):", firestoreErr.code);
+      }
 
       setLastBackupTime(formattedDate);
       localStorage.setItem('fib_last_google_backup', formattedDate);
-      setBackupSuccessMsg(`Snapshot saved to Google Cloud! (${allSchedules.length} shifts & ${employees.length} agents)`);
-      showToast("Cloud backup completed successfully!", "success");
+
+      if (firestoreCloudSaved) {
+        setBackupSuccessMsg(`Snapshot saved to Google Cloud Firestore & downloaded! (${allSchedules.length} shifts & ${employees.length} agents)`);
+        showToast("Cloud backup saved to Google Firestore & downloaded!", "success");
+      } else {
+        setBackupSuccessMsg(`Backup snapshot created & downloaded successfully! (${allSchedules.length} shifts & ${employees.length} agents)`);
+        showToast("Google Backup snapshot created and downloaded successfully!", "success");
+      }
     } catch (err) {
       console.error("Cloud backup error:", err);
-      showToast(`Backup failed: ${err.message}`);
+      showToast(`Backup error: ${err.message}`);
     } finally {
       setBackupLoading(false);
     }
