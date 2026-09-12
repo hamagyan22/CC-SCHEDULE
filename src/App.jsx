@@ -348,18 +348,49 @@ function App() {
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('ALL')
   const [customDate, setCustomDate] = useState('')
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const datePickerRef = useRef(null)
+  const [datePickerCoords, setDatePickerCoords] = useState({ top: 0, left: 0 })
+  const customDateBtnRef = useRef(null)
+  const customDatePortalRef = useRef(null)
+
+  const toggleCustomDatePicker = () => {
+    if (!showDatePicker && customDateBtnRef.current) {
+      const rect = customDateBtnRef.current.getBoundingClientRect();
+      const popupWidth = 260;
+      let left = rect.left;
+      if (left + popupWidth > window.innerWidth - 16) {
+        left = window.innerWidth - popupWidth - 16;
+      }
+      setDatePickerCoords({
+        top: rect.bottom + 6,
+        left: Math.max(12, left)
+      });
+    }
+    setShowDatePicker(!showDatePicker);
+  };
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
+    const handleClickOutside = (event) => {
+      const inTrigger = customDateBtnRef.current && customDateBtnRef.current.contains(event.target);
+      const inPortal = customDatePortalRef.current && customDatePortalRef.current.contains(event.target);
+      if (!inTrigger && !inPortal) {
         setShowDatePicker(false);
       }
-    }
+    };
+    const handleScroll = (event) => {
+      if (customDatePortalRef.current && customDatePortalRef.current.contains(event.target)) return;
+      setShowDatePicker(false);
+    };
+
     if (showDatePicker) {
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener('mousedown', handleClickOutside);
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleScroll);
     }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleScroll);
+    };
   }, [showDatePicker]);
 
   const handleCustomDateSelect = (dateStr) => {
@@ -1182,39 +1213,119 @@ function App() {
             <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0, marginTop: '3px', fontWeight: '500', letterSpacing: '0.02em' }}>Shift & Team Management</p>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button className="theme-btn" onClick={() => setIsDark(!isDark)}>
-            {isDark ? <Sun size={20} /> : <Moon size={20} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Theme Toggle Button */}
+          <button 
+            onClick={() => setIsDark(!isDark)}
+            title="Toggle theme"
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-main)',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent-green)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
+          >
+            {isDark ? <Sun size={17} style={{ color: '#f59e0b' }} /> : <Moon size={17} style={{ color: '#6366f1' }} />}
           </button>
-          {/* User info */}
+
+          {/* User Profile Card */}
           <div 
             onClick={() => {
               setEditDisplayName(currentUser?.displayName || '');
               setEditPhotoURL(currentUser?.photoURL || '');
               setShowProfileModal(true);
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '6px', backgroundColor: 'var(--header-bg)', border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'background-color 0.2s' }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--header-bg)'}
+            title="Edit Profile"
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '10px', 
+              padding: '4px 12px 4px 5px', 
+              borderRadius: '24px', 
+              backgroundColor: 'var(--bg-card)', 
+              border: '1px solid var(--border-color)', 
+              cursor: 'pointer', 
+              boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+              transition: 'all 0.2s' 
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+              e.currentTarget.style.borderColor = 'var(--accent-green)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = 'var(--border-color)';
+            }}
           >
             {currentUser?.photoURL ? (
-              <img src={currentUser.photoURL} alt="Profile" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
+              <img src={currentUser.photoURL} alt="Profile" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid var(--accent-green)' }} />
             ) : (
-              <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', fontWeight: '800' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: '800' }}>
                 {(currentUser?.displayName || currentUser?.email)?.[0]?.toUpperCase()}
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
-                {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : 
-                 (authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim()) ? '👤 Team Leader' :
-                 (userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader'))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ 
+                  fontSize: '10px', 
+                  fontWeight: '800', 
+                  color: currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '#b45309' : 'var(--accent-green)', 
+                  backgroundColor: currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '#fef3c7' : 'rgba(15,118,66,0.1)', 
+                  padding: '1px 6px', 
+                  borderRadius: '4px',
+                  lineHeight: '1.2' 
+                }}>
+                  {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : 
+                   (authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim())?.role || userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader')}
+                </span>
+              </div>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
+                {currentUser?.displayName || currentUser?.email}
               </span>
-              <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-muted)', lineHeight: '1.2' }}>{currentUser?.displayName || currentUser?.email}</span>
             </div>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', marginLeft: '2px' }}><path d="m6 9 6 6 6-6"/></svg>
           </div>
-          <button onClick={() => signOut(auth)} style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border-color)', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer' }}>
-            <LogOut size={15} />
+
+          {/* Log Out Button */}
+          <button 
+            onClick={() => signOut(auth)} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              border: '1px solid rgba(239, 68, 68, 0.2)', 
+              backgroundColor: 'rgba(239, 68, 68, 0.06)', 
+              padding: '0 14px', 
+              height: '36px', 
+              borderRadius: '8px', 
+              fontSize: '12px', 
+              fontWeight: '700', 
+              color: '#ef4444', 
+              cursor: 'pointer',
+              transition: 'all 0.2s' 
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = '#ef4444';
+              e.currentTarget.style.color = '#FFFFFF';
+              e.currentTarget.style.borderColor = '#ef4444';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.06)';
+              e.currentTarget.style.color = '#ef4444';
+              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+            }}
+          >
+            <LogOut size={14} />
             Log Out
           </button>
         </div>
@@ -1412,9 +1523,10 @@ function App() {
                 />
 
                 {/* Custom Date Filter - Before Weeks, Green Style */}
-                <div ref={datePickerRef} style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }}>
                   <button
-                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    ref={customDateBtnRef}
+                    onClick={toggleCustomDatePicker}
                     style={{
                       backgroundColor: 'var(--accent-green)',
                       color: '#FFFFFF',
@@ -1459,25 +1571,29 @@ function App() {
                     )}
                   </button>
 
-                  {showDatePicker && (
-                    <div className="animate-in fade-in zoom-in-95 duration-150" style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 6px)',
-                      left: 0,
-                      backgroundColor: 'var(--bg-card)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '10px',
-                      padding: '14px',
-                      boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
-                      zIndex: 100,
-                      minWidth: '240px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px'
-                    }}>
+                  {showDatePicker && createPortal(
+                    <div 
+                      ref={customDatePortalRef}
+                      className="animate-in fade-in zoom-in-95 duration-150" 
+                      style={{
+                        position: 'fixed',
+                        top: `${datePickerCoords.top}px`,
+                        left: `${datePickerCoords.left}px`,
+                        backgroundColor: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        boxShadow: '0 16px 36px rgba(0, 0, 0, 0.25)',
+                        zIndex: 9999,
+                        minWidth: '260px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                      }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Calendar size={13} style={{ color: 'var(--accent-green)' }} /> Custom Date
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Calendar size={14} style={{ color: 'var(--accent-green)' }} /> Custom Date
                         </span>
                         {customDate && (
                           <button
@@ -1495,8 +1611,8 @@ function App() {
                         onChange={(e) => handleCustomDateSelect(e.target.value)}
                         style={{
                           width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
                           border: '1px solid var(--border-color)',
                           backgroundColor: 'var(--input-bg)',
                           color: 'var(--text-main)',
@@ -1507,7 +1623,7 @@ function App() {
                         }}
                       />
 
-                      <div style={{ display: 'flex', gap: '6px', paddingTop: '2px' }}>
+                      <div style={{ display: 'flex', gap: '8px', paddingTop: '2px' }}>
                         <button
                           onClick={() => {
                             const today = new Date();
@@ -1516,16 +1632,19 @@ function App() {
                           }}
                           style={{
                             flex: 1,
-                            padding: '6px 10px',
-                            fontSize: '11px',
+                            padding: '8px 12px',
+                            fontSize: '12px',
                             fontWeight: '700',
-                            borderRadius: '4px',
+                            borderRadius: '6px',
                             border: '1px solid var(--border-color)',
                             backgroundColor: 'var(--hover-bg)',
                             color: 'var(--text-main)',
                             cursor: 'pointer',
-                            textAlign: 'center'
+                            textAlign: 'center',
+                            transition: 'background 0.15s'
                           }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--border-color)'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
                         >
                           Today
                         </button>
@@ -1534,22 +1653,26 @@ function App() {
                             onClick={() => { setCustomDate(''); setShowDatePicker(false); }}
                             style={{
                               flex: 1,
-                              padding: '6px 10px',
-                              fontSize: '11px',
+                              padding: '8px 12px',
+                              fontSize: '12px',
                               fontWeight: '700',
-                              borderRadius: '4px',
+                              borderRadius: '6px',
                               border: 'none',
                               backgroundColor: '#fee2e2',
                               color: '#b91c1c',
                               cursor: 'pointer',
-                              textAlign: 'center'
+                              textAlign: 'center',
+                              transition: 'background 0.15s'
                             }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fca5a5'}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fee2e2'}
                           >
                             Clear
                           </button>
                         )}
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   )}
                 </div>
   
@@ -1602,9 +1725,10 @@ function App() {
                 />
               </div>
 
-              <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--border-color)', margin: '0 8px' }}></div>
+              <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 6px', flexShrink: 0 }}></div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Months stretched across the full toolbar width */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: '460px', justifyContent: 'space-between' }}>
                 {MONTHS.map((month, idx) => {
                   const isActive = !customDate && idx === activeMonthIndex;
                   return (
@@ -1614,17 +1738,36 @@ function App() {
                            handleMonthClick(idx);
                          }}
                          style={{ 
+                           flex: 1,
+                           height: '32px',
                            cursor: 'pointer', 
-                           padding: '5px 8px', 
-                           border: 'none', 
-                           borderRadius: '5px', 
+                           padding: '0 2px', 
+                           border: isActive ? '1px solid var(--accent-green)' : '1px solid transparent', 
+                           borderRadius: '6px', 
                            fontSize: '11px', 
                            fontWeight: isActive ? '800' : '600', 
                            backgroundColor: isActive ? 'var(--accent-green)' : 'transparent', 
                            color: isActive ? '#FFFFFF' : 'var(--text-muted)', 
-                           boxShadow: isActive ? '0 2px 4px rgba(15, 118, 66, 0.3)' : 'none',
-                           transition: 'all 0.15s' 
-                         }}>
+                           boxShadow: isActive ? '0 2px 6px rgba(15, 118, 66, 0.25)' : 'none',
+                           transition: 'all 0.15s',
+                           display: 'flex',
+                           alignItems: 'center',
+                           justifyContent: 'center',
+                           whiteSpace: 'nowrap'
+                         }}
+                         onMouseEnter={e => {
+                           if (!isActive) {
+                             e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                             e.currentTarget.style.color = 'var(--text-main)';
+                           }
+                         }}
+                         onMouseLeave={e => {
+                           if (!isActive) {
+                             e.currentTarget.style.backgroundColor = 'transparent';
+                             e.currentTarget.style.color = 'var(--text-muted)';
+                           }
+                         }}
+                    >
                       {month}
                     </button>
                   )
@@ -1649,18 +1792,35 @@ function App() {
                       zIndex: 35,
                       backgroundColor: 'var(--header-bg)',
                       paddingLeft: '16px', 
-                      paddingRight: '8px',
-                      height: '36px',
+                      paddingRight: '12px',
+                      height: '52px',
                       borderBottom: '1px solid var(--border-color)',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                      verticalAlign: 'middle'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Users size={13} style={{ color: 'var(--accent-green)' }} />
-                        <span style={{ fontSize: '11px', fontWeight: '800', letterSpacing: '0.06em', color: 'var(--text-main)', textTransform: 'uppercase' }}>
+                      <div style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        padding: '6px 12px', 
+                        borderRadius: '20px', 
+                        backgroundColor: 'var(--bg-card)', 
+                        border: '1px solid var(--border-color)',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                      }}>
+                        <Users size={14} style={{ color: 'var(--accent-green)' }} />
+                        <span style={{ fontSize: '11px', fontWeight: '800', letterSpacing: '0.04em', color: 'var(--text-main)', textTransform: 'uppercase' }}>
                           Agent
                         </span>
-                        <span style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)' }}>
-                          ({filteredEmployees.length})
+                        <span style={{ 
+                          fontSize: '10px', 
+                          fontWeight: '700', 
+                          color: 'var(--accent-green)',
+                          backgroundColor: 'rgba(15, 118, 66, 0.1)',
+                          padding: '1px 6px',
+                          borderRadius: '10px'
+                        }}>
+                          {filteredEmployees.length}
                         </span>
                       </div>
                     </th>
@@ -1675,81 +1835,108 @@ function App() {
                           position: 'sticky',
                           top: 0,
                           zIndex: 30,
-                          backgroundColor: isToday ? 'var(--bg-card)' : 'var(--header-bg)',
-                          padding: '2px 2px', 
-                          height: '36px',
-                          borderBottom: isToday ? '2px solid var(--accent-green)' : isCustom ? '2px solid #2563eb' : '1px solid var(--border-color)',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+                          backgroundColor: 'var(--header-bg)',
+                          padding: '4px 3px', 
+                          height: '52px',
+                          borderBottom: '1px solid var(--border-color)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                          verticalAlign: 'middle',
                           transition: 'all 0.2s'
                         }}>
                           <div style={{ 
                             display: 'flex', 
+                            flexDirection: 'column',
                             alignItems: 'center', 
                             justifyContent: 'center',
-                            gap: '4px',
-                            height: '28px',
-                            padding: '0 4px',
-                            borderRadius: '5px',
-                            backgroundColor: isToday ? 'rgba(15, 118, 66, 0.1)' : isCustom ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
-                            border: isToday ? '1px solid rgba(15, 118, 66, 0.25)' : isCustom ? '1px solid rgba(37, 99, 235, 0.3)' : 'none',
+                            gap: '2px',
+                            height: '100%',
+                            padding: '4px 4px',
+                            borderRadius: '8px',
+                            backgroundColor: isToday 
+                              ? (isDark ? 'rgba(15, 118, 66, 0.2)' : 'rgba(15, 118, 66, 0.08)') 
+                              : isCustom 
+                              ? (isDark ? 'rgba(37, 99, 235, 0.2)' : 'rgba(37, 99, 235, 0.08)') 
+                              : 'transparent',
+                            border: isToday 
+                              ? '1px solid rgba(15, 118, 66, 0.35)' 
+                              : isCustom 
+                              ? '1px solid rgba(37, 99, 235, 0.35)' 
+                              : '1px solid transparent',
+                            boxShadow: isToday ? '0 2px 8px rgba(15, 118, 66, 0.12)' : 'none',
                             transition: 'all 0.2s'
                           }}>
-                            <span style={{ 
-                              fontSize: '10px', 
-                              fontWeight: '800', 
-                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
-                              textTransform: 'uppercase', 
-                              letterSpacing: '0.04em'
-                            }}>
-                              {DAY_NAMES[i]}
-                            </span>
-                            
-                            <span style={{ 
-                              fontSize: '13px', 
-                              fontWeight: '900',
-                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-main)',
-                              lineHeight: 1
-                            }}>
-                              {date.split('-')[2]}
-                            </span>
-                            
+                            {/* Day Name (Soft Title Case: Sun, Mon, etc.) */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ 
+                                fontSize: '11px', 
+                                fontWeight: '700', 
+                                color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
+                                letterSpacing: '0.02em',
+                                lineHeight: 1
+                              }}>
+                                {DAY_NAMES[i]}
+                              </span>
+                              {isToday && (
+                                <span style={{
+                                  width: '5px',
+                                  height: '5px',
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--accent-green)',
+                                  display: 'inline-block'
+                                }} />
+                              )}
+                            </div>
+
+                            {/* Day Number and Month */}
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px', lineHeight: 1 }}>
+                              <span style={{ 
+                                fontSize: '15px', 
+                                fontWeight: '800',
+                                color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-main)',
+                                letterSpacing: '-0.02em'
+                              }}>
+                                {date.split('-')[2]}
+                              </span>
+                              <span style={{ 
+                                fontSize: '10px', 
+                                fontWeight: '600', 
+                                color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)',
+                                opacity: 0.8
+                              }}>
+                                {new Date(date).toLocaleString('default', { month: 'short' })}
+                              </span>
+                            </div>
+
+                            {/* Today / Filter Badge */}
                             {isToday ? (
                               <span style={{ 
                                 fontSize: '8px', 
-                                fontWeight: '900', 
+                                fontWeight: '800', 
                                 backgroundColor: 'var(--accent-green)', 
                                 color: '#FFFFFF',
-                                padding: '1px 3px',
-                                borderRadius: '3px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.03em',
-                                lineHeight: 1
+                                padding: '1px 6px',
+                                borderRadius: '10px',
+                                letterSpacing: '0.04em',
+                                lineHeight: 1.1,
+                                marginTop: '1px'
                               }}>
-                                TODAY
+                                Today
                               </span>
                             ) : isCustom ? (
                               <span style={{ 
                                 fontSize: '8px', 
-                                fontWeight: '900', 
+                                fontWeight: '800', 
                                 backgroundColor: '#2563eb', 
                                 color: '#FFFFFF',
-                                padding: '1px 3px',
-                                borderRadius: '3px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.03em',
-                                lineHeight: 1
+                                padding: '1px 6px',
+                                borderRadius: '10px',
+                                letterSpacing: '0.04em',
+                                lineHeight: 1.1,
+                                marginTop: '1px'
                               }}>
-                                DATE
+                                Filter
                               </span>
-                            ) : (
-                              <span style={{ 
-                                fontSize: '9px', 
-                                fontWeight: '600', 
-                                color: 'var(--text-muted)'
-                              }}>
-                                {new Date(date).toLocaleString('default', { month: 'short' })}
-                              </span>
-                            )}
+                            ) : null}
                           </div>
                         </th>
                       );
