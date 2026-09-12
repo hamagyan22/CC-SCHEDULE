@@ -12,53 +12,53 @@ const YEARS = [2026, 2027, 2028, 2029, 2030]
 
 // Organization System Roster & Shift Mapping
 const SYSTEM_EMPLOYEES = [
-  { empNo: 507, name: 'Mokhlad Midhat Ali' },
-  { empNo: 347, name: 'Haseeb Adeeb Muhei' },
-  { empNo: 376, name: 'Zainab Khalid Rashid' },
-  { empNo: 374, name: 'Yousif Rashid راشد Darwish' },
-  { empNo: 334, name: 'Ahmed Jalil Mohammed' },
-  { empNo: 377, name: 'Zhalla Sherzad Salam' },
-  { empNo: 424, name: 'Marwa Khalil Khala' },
-  { empNo: 342, name: 'Azad Mohammed Abdullah' },
-  { empNo: 348, name: 'Hevr Adnan Ismail' },
-  { empNo: 358, name: 'Muzhda Omar Ali' },
-  { empNo: 381, name: 'Shahab Ahmed Mohammed' },
-  { empNo: 339, name: 'Alla Satar Karim' },
-  { empNo: 373, name: 'Younis Kamal Ahmed' },
-  { empNo: 375, name: 'Zahra Yousif Tofiq' },
-  { empNo: 382, name: 'Ismail Majeed Ahmad' },
-  { empNo: 368, name: 'Saja Bashar Anwar' },
-  { empNo: 349, name: 'Kani Sami Othman' },
-  { empNo: 340, name: 'Ankidu Buya Saada' },
-  { empNo: 345, name: 'Frmesk Younis Auzer' },
-  { empNo: 371, name: 'Soma Sherko Muhammed' },
-  { empNo: 336, name: 'Ahmed Rostam Omar' },
-  { empNo: 506, name: 'Laven Musleh Khaleel' },
-  { empNo: 350, name: 'Lana Hekmat Rafiq' },
-  { empNo: 351, name: 'Isra Kamil Mohammed' },
-  { empNo: 372, name: 'Taban Sirvan Jalal' },
-  { empNo: 360, name: 'Navin Moath Mohammed' },
-  { empNo: 362, name: 'Osama Saadi Mahmoud' },
-  { empNo: 365, name: 'Rasan Ismail Mousa' },
-  { empNo: 367, name: 'Sana Dler Fuad' },
-  { empNo: 356, name: 'Mohammed Jihad Nuri' },
-  { empNo: 369, name: 'Saven Sarip Hussien' },
-  { empNo: 370, name: 'Shireen Weise Saeed' },
-  { empNo: 357, name: 'Mohammad Dilshad Omar' },
-  { empNo: 341, name: 'Aya Yassin Abdulrahman' },
-  { empNo: 366, name: 'Serbaz Namiq نامق Hasan' },
-  { empNo: 337, name: 'Akar Dyar Omar' },
-  { empNo: 221, name: 'Zhala Sherzad khoudhur' },
-  { empNo: 584, name: 'Salam Saddam Mohammed Rasheed' },
-  { empNo: 585, name: 'Ammar Hussain Salih' },
-  { empNo: 586, name: 'Haneen Abdulkarim Iskandar' },
-  { empNo: 353, name: 'Mohammad Azar Saber' },
-  { empNo: 343, name: 'Bana Firya Ahmed' },
-  { empNo: 344, name: 'Dhuka Khanjar Nuri' },
-  { empNo: 364, name: 'Rabar Majid Mohammed' },
-  { empNo: 691, name: 'Marwa Shaalan Hussein' },
-  { empNo: 692, name: 'Mohammed Saman Salim' },
-  { empNo: 575, name: 'Kazhwan Wrga Ali' },
+  { empNo: 507, name: 'Mokhlad Midhat Ali', aliases: ['mokhalad ali', 'mokhlad ali', 'mokhalad', 'mokhlad'] },
+  { empNo: 347, name: 'Haseeb Adeeb Muhei', aliases: ['haseeb adeeb', 'haseeb'] },
+  { empNo: 376, name: 'Zainab Khalid Rashid', aliases: ['zainab khalid rasheed', 'zainab khalid', 'zainab'] },
+  { empNo: 374, name: 'Yousif Rashid راشد Darwish', aliases: ['yousif rashid', 'yousif darwish'] },
+  { empNo: 334, name: 'Ahmed Jalil Mohammed', aliases: ['ahmed jalil', 'ahmed jaleel'] },
+  { empNo: 377, name: 'Zhalla Sherzad Salam', aliases: ['zhalla salam', 'zhalla', 'zhala salam'] },
+  { empNo: 424, name: 'Marwa Khalil Khala', aliases: ['marwa khalil'] },
+  { empNo: 342, name: 'Azad Mohammed Abdullah', aliases: ['azad muhammad', 'azad mohammed'] },
+  { empNo: 348, name: 'Hevr Adnan Ismail', aliases: ['hewr adnan', 'hevr adnan'] },
+  { empNo: 358, name: 'Muzhda Omar Ali', aliases: ['muzhda omar ali', 'muzhda'] },
+  { empNo: 381, name: 'Shahab Ahmed Mohammed', aliases: ['shahab ahmed muhammed', 'shahab ahmed', 'shahab'] },
+  { empNo: 339, name: 'Alla Satar Karim', aliases: ['alla satar', 'alla sattar', 'ala satar'] },
+  { empNo: 373, name: 'Younis Kamal Ahmed', aliases: ['younis kamal', 'yonis kamal'] },
+  { empNo: 375, name: 'Zahra Yousif Tofiq', aliases: ['zahra yousif', 'zahra yousef', 'zahra'] },
+  { empNo: 382, name: 'Ismail Majeed Ahmad', aliases: ['ismail ahmed', 'ismail majeed'] },
+  { empNo: 368, name: 'Saja Bashar Anwar', aliases: ['saja bashar anwar', 'saja bashar', 'saja'] },
+  { empNo: 349, name: 'Kani Sami Othman', aliases: ['kani sami', 'kani samy'] },
+  { empNo: 340, name: 'Ankidu Buya Saada', aliases: ['ankido buya', 'ankidu buya', 'enkidu buya', 'ankido', 'ankidu', 'enkidu'] },
+  { empNo: 345, name: 'Frmesk Younis Auzer', aliases: ['frmesk younis', 'frmesk'] },
+  { empNo: 371, name: 'Soma Sherko Muhammed', aliases: ['soma sherko', 'soma'] },
+  { empNo: 336, name: 'Ahmed Rostam Omar', aliases: ['ahmed rustam', 'ahmed rostam'] },
+  { empNo: 506, name: 'Laven Musleh Khaleel', aliases: ['laveen khaleel', 'laven khaleel', 'laveen', 'laven'] },
+  { empNo: 350, name: 'Lana Hekmat Rafiq', aliases: ['lana halmat rafeeq', 'lana hekmat', 'lana halmat'] },
+  { empNo: 351, name: 'Isra Kamil Mohammed', aliases: ['isra kamil', 'lara kamil'] },
+  { empNo: 372, name: 'Taban Sirvan Jalal', aliases: ['taban sirwan', 'taban sirvan', 'taban'] },
+  { empNo: 360, name: 'Navin Moath Mohammed', aliases: ['nawen maadh', 'navin moath', 'nawen', 'navin'] },
+  { empNo: 362, name: 'Osama Saadi Mahmoud', aliases: ['ossama saadi', 'osama saadi', 'ossama'] },
+  { empNo: 365, name: 'Rasan Ismail Mousa', aliases: ['rassan ismail', 'rasan ismail', 'rassan'] },
+  { empNo: 367, name: 'Sana Dler Fuad', aliases: ['sana dler'] },
+  { empNo: 356, name: 'Mohammed Jihad Nuri', aliases: ['mohammed jihad', 'mohamad jihad'] },
+  { empNo: 369, name: 'Saven Sarip Hussien', aliases: ['sawen', 'saven'] },
+  { empNo: 370, name: 'Shireen Weise Saeed', aliases: ['shireen waisi', 'shireen weise', 'shireen'] },
+  { empNo: 357, name: 'Mohammad Dilshad Omar', aliases: ['mohammed dilshad', 'mohammad dilshad'] },
+  { empNo: 341, name: 'Aya Yassin Abdulrahman', aliases: ['aya yasin', 'aya yassin', 'aya'] },
+  { empNo: 366, name: 'Serbaz Namiq نامق Hasan', aliases: ['sarbaz namiq hasan', 'sarbaz namiq', 'serbaz namiq'] },
+  { empNo: 337, name: 'Akar Dyar Omar', aliases: ['akar omer', 'akar dyar'] },
+  { empNo: 221, name: 'Zhala Sherzad khoudhur', aliases: ['zhala sherzad'] },
+  { empNo: 584, name: 'Salam Saddam Mohammed Rasheed', aliases: ['salam sadam muhammad', 'salam saddam', 'salam sadam'] },
+  { empNo: 585, name: 'Ammar Hussain Salih', aliases: ['amar hussein salih', 'ammar hussain', 'amar hussein'] },
+  { empNo: 586, name: 'Haneen Abdulkarim Iskandar', aliases: ['haneen abd-al kareem', 'haneen abdulkarim', 'haneen'] },
+  { empNo: 353, name: 'Mohammad Azar Saber', aliases: ['moahammed azad', 'mohammed azad', 'mohammad azar', 'azar saber'] },
+  { empNo: 343, name: 'Bana Firya Ahmed', aliases: ['bana ahmed', 'bana firya', 'bana'] },
+  { empNo: 344, name: 'Dhuka Khanjar Nuri', aliases: ['dhuha khanjer', 'dhuka khanjar', 'dhuha', 'dhuka'] },
+  { empNo: 364, name: 'Rabar Majid Mohammed', aliases: ['rabar mohammed', 'rabar majid', 'rabar'] },
+  { empNo: 691, name: 'Marwa Shaalan Hussein', aliases: ['marwa shalaan', 'marwa shaalan'] },
+  { empNo: 692, name: 'Mohammed Saman Salim', aliases: ['mohammed salem', 'mohammed saman'] },
+  { empNo: 575, name: 'Kazhwan Wrga Ali', aliases: ['kazhvan wirya', 'kazhwan wrga', 'kazhvan', 'kazhwan'] },
 ];
 
 const SHIFT_SYSTEM_CODE_MAP = {
@@ -444,6 +444,12 @@ function App() {
   const customDateBtnRef = useRef(null)
   const customDatePortalRef = useRef(null)
 
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportModalYear, setExportModalYear] = useState(() => new Date().getFullYear())
+  const [exportModalWeekIndex, setExportModalWeekIndex] = useState(0)
+  const [exportCustomDatePicker, setExportCustomDatePicker] = useState('')
+  const [exportingSystemFile, setExportingSystemFile] = useState(false)
+
   const getTodayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -547,6 +553,31 @@ function App() {
   };
   
   const WEEKS = useMemo(() => generateWeeksForYear(currentYear), [currentYear])
+
+  const exportModalWeeks = useMemo(() => generateWeeksForYear(exportModalYear), [exportModalYear]);
+
+  const exportModalDates = useMemo(() => {
+    if (exportCustomDatePicker) {
+      const d = new Date(exportCustomDatePicker + 'T00:00:00');
+      if (!isNaN(d.getTime())) {
+        const dayOfWeek = d.getDay(); // 0 = Sun
+        const sun = new Date(d);
+        sun.setDate(d.getDate() - dayOfWeek);
+        const dates = [];
+        for (let i = 0; i < 7; i++) {
+          const cur = new Date(sun);
+          cur.setDate(sun.getDate() + i);
+          const y = cur.getFullYear();
+          const m = String(cur.getMonth() + 1).padStart(2, '0');
+          const day = String(cur.getDate()).padStart(2, '0');
+          dates.push(`${y}-${m}-${day}`);
+        }
+        return dates;
+      }
+    }
+    const w = exportModalWeeks[exportModalWeekIndex] || exportModalWeeks[0];
+    return w ? w.dates : [];
+  }, [exportCustomDatePicker, exportModalWeeks, exportModalWeekIndex]);
 
   const [employees, setEmployees] = useState([])
   const [schedules, setSchedules] = useState({})
@@ -1002,15 +1033,27 @@ function App() {
     }
   };
 
-  const handleExportSystemExcel = async () => {
+  const handleExportSystemExcel = async (customTargetDates = null) => {
     try {
+      setExportingSystemFile(true);
       showToast("Generating Organization System Excel (.xlsx)...", "info");
 
       // Target 7 dates of the selected week (Sunday to Saturday)
-      const week = WEEKS[currentWeekIndex];
-      const targetDates = (activeCustomDates && activeCustomDates.length === 7) 
-        ? activeCustomDates 
-        : (week ? week.dates : activeDates.slice(0, 7));
+      let targetDates = customTargetDates;
+      if (!targetDates || targetDates.length !== 7) {
+        if (exportModalDates && exportModalDates.length === 7) {
+          targetDates = exportModalDates;
+        } else {
+          const week = WEEKS[currentWeekIndex];
+          targetDates = (activeCustomDates && activeCustomDates.length === 7) 
+            ? activeCustomDates 
+            : (week ? week.dates : activeDates.slice(0, 7));
+        }
+      }
+
+      if (!targetDates || targetDates.length !== 7) {
+        throw new Error("Please select a 7-day week (Sunday to Saturday) to export.");
+      }
 
       // Fetch fresh schedule data for these dates to guarantee 100% sync
       const minDate = targetDates[0];
@@ -1042,54 +1085,63 @@ function App() {
         })
       ];
 
-      // Build rows in the exact order of the organization's system
+      // Build rows in the exact order of the organization's 47 system employees.
+      // Every employee is mapped 1-to-1 using prioritized aliases.
+      // NO duplicates and NO extra rows appended.
       const rows = [];
-      const matchedAppEmpIds = new Set();
+      const usedAppEmpIds = new Set();
 
       SYSTEM_EMPLOYEES.forEach(sysEmp => {
-        const sysClean = sysEmp.name.toLowerCase().replace(/[\u0600-\u06FF]/g, '').replace(/\s+/g, ' ').trim();
-        const sysWords = sysClean.split(' ').filter(w => w.length > 2);
+        let matchedAppEmp = null;
 
-        const appEmp = employees.find(e => {
-          if (!e.name) return false;
-          if (e.employment_number && Number(e.employment_number) === sysEmp.empNo) return true;
-          const eClean = e.name.toLowerCase().replace(/[\u0600-\u06FF]/g, '').replace(/\s+/g, ' ').trim();
-          if (eClean === sysClean) return true;
-          if (eClean.includes(sysClean) || sysClean.includes(eClean)) return true;
-          if (sysWords.length >= 2 && sysWords.every(w => eClean.includes(w))) return true;
-          if ((sysClean.includes('ankidu') || sysClean.includes('enkidu')) && (eClean.includes('ankidu') || eClean.includes('enkidu'))) return true;
-          if (sysClean.includes('younis') && (eClean.includes('younis') || eClean.includes('yonis'))) return true;
-          return false;
-        });
+        // 1. Direct empNo match if set in employee record
+        if (sysEmp.empNo) {
+          matchedAppEmp = employees.find(e => 
+            !usedAppEmpIds.has(e.id) && 
+            e.employment_number && 
+            Number(e.employment_number) === sysEmp.empNo
+          );
+        }
 
-        if (appEmp) matchedAppEmpIds.add(appEmp.id);
+        // 2. Exact match on aliases
+        if (!matchedAppEmp && sysEmp.aliases) {
+          for (const alias of sysEmp.aliases) {
+            matchedAppEmp = employees.find(e => {
+              if (usedAppEmpIds.has(e.id) || !e.name) return false;
+              const clean = e.name.toLowerCase().trim();
+              return clean === alias;
+            });
+            if (matchedAppEmp) break;
+          }
+        }
+
+        // 3. Substring match on aliases
+        if (!matchedAppEmp && sysEmp.aliases) {
+          for (const alias of sysEmp.aliases) {
+            matchedAppEmp = employees.find(e => {
+              if (usedAppEmpIds.has(e.id) || !e.name) return false;
+              const clean = e.name.toLowerCase().trim();
+              return clean.includes(alias) || alias.includes(clean);
+            });
+            if (matchedAppEmp) break;
+          }
+        }
+
+        if (matchedAppEmp) {
+          usedAppEmpIds.add(matchedAppEmp.id);
+        }
 
         const row = [
           sysEmp.empNo,
           sysEmp.name,
           ...targetDates.map(date => {
-            const shiftCode = (appEmp && weekSchedMap[appEmp.id]?.[date]) || 
-                              (appEmp && schedules[appEmp.id]?.[date]) || 
+            const shiftCode = (matchedAppEmp && weekSchedMap[matchedAppEmp.id]?.[date]) || 
+                              (matchedAppEmp && schedules[matchedAppEmp.id]?.[date]) || 
                               '';
             return formatShiftForSystem(shiftCode);
           })
         ];
         rows.push(row);
-      });
-
-      // Also append any extra employees in the app not in SYSTEM_EMPLOYEES
-      employees.forEach(appEmp => {
-        if (!matchedAppEmpIds.has(appEmp.id)) {
-          const row = [
-            appEmp.employment_number || '',
-            appEmp.name,
-            ...targetDates.map(date => {
-              const shiftCode = weekSchedMap[appEmp.id]?.[date] || schedules[appEmp.id]?.[date] || '';
-              return formatShiftForSystem(shiftCode);
-            })
-          ];
-          rows.push(row);
-        }
       });
 
       // Create sheet & workbook
@@ -1115,9 +1167,12 @@ function App() {
 
       XLSX.writeFile(wb, filename);
       showToast(`✓ Exported ${filename} successfully in system format!`, "success");
+      setShowExportModal(false);
     } catch (err) {
       console.error("System Excel export error:", err);
       showToast(`Export error: ${err.message}`);
+    } finally {
+      setExportingSystemFile(false);
     }
   };
 
@@ -2060,8 +2115,35 @@ function App() {
             )}
           </div>
 
+          {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && (
+            <React.Fragment>
+              <button 
+                onClick={() => setShowAccess(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                <Shield size={16} /> Access
+              </button>
+              <button 
+                onClick={() => setShowHistory(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                <Clock size={16} /> History
+              </button>
+              <button 
+                onClick={() => setCurrentTab(currentTab === 'manage' ? 'schedule' : 'manage')}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                {currentTab === 'manage' ? <Calendar size={16} /> : <Settings size={16} />}
+                {currentTab === 'manage' ? 'View Schedule' : 'Manage'}
+              </button>
+            </React.Fragment>
+          )}
+
+          {/* Export System Excel Button - Positioned right next to Manage */}
           <button 
-            onClick={handleExportSystemExcel}
+            onClick={() => {
+              setExportModalYear(currentYear);
+              setExportModalWeekIndex(currentWeekIndex);
+              setExportCustomDatePicker('');
+              setShowExportModal(true);
+            }}
             style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -2084,27 +2166,6 @@ function App() {
           >
             <FileSpreadsheet size={16} /> Export System (.xlsx)
           </button>
-          
-          {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && (
-            <React.Fragment>
-              <button 
-                onClick={() => setShowAccess(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
-                <Shield size={16} /> Access
-              </button>
-              <button 
-                onClick={() => setShowHistory(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
-                <Clock size={16} /> History
-              </button>
-              <button 
-                onClick={() => setCurrentTab(currentTab === 'manage' ? 'schedule' : 'manage')}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
-                {currentTab === 'manage' ? <Calendar size={16} /> : <Settings size={16} />}
-                {currentTab === 'manage' ? 'View Schedule' : 'Manage'}
-              </button>
-            </React.Fragment>
-          )}
         </div>
 
         {/* SCHEDULE TAB */}
@@ -2589,34 +2650,6 @@ function App() {
                   ]}
                   icon={<Users size={14} />}
                 />
-
-                <button
-                  onClick={handleExportSystemExcel}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    height: '36px',
-                    padding: '0 12px',
-                    borderRadius: '6px',
-                    backgroundColor: '#107c41',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    fontWeight: '700',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(16, 124, 65, 0.3)',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s',
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0d6334'}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#107c41'}
-                  title="Export weekly schedule in organization system Excel format (.xlsx)"
-                >
-                  <FileSpreadsheet size={15} />
-                  <span>Export System (.xlsx)</span>
-                </button>
               </div>
 
               <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 6px', flexShrink: 0 }}></div>
@@ -4273,7 +4306,13 @@ function App() {
 
                   <button
                     type="button"
-                    onClick={handleExportSystemExcel}
+                    onClick={() => {
+                      setShowProfileModal(false);
+                      setExportModalYear(currentYear);
+                      setExportModalWeekIndex(currentWeekIndex);
+                      setExportCustomDatePicker('');
+                      setShowExportModal(true);
+                    }}
                     style={{
                       gridColumn: 'span 2',
                       display: 'flex',
@@ -4339,6 +4378,319 @@ function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Small Modal: Export Organization System Excel */}
+      {showExportModal && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', 
+          backdropFilter: 'blur(8px)', 
+          WebkitBackdropFilter: 'blur(8px)',
+          zIndex: 1000, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{ 
+            backgroundColor: 'var(--bg-card)', 
+            borderRadius: '20px', 
+            padding: '24px', 
+            width: '100%', 
+            maxWidth: '520px', 
+            maxHeight: '92vh', 
+            overflowY: 'auto', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '18px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', 
+            border: '1px solid var(--border-color)',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #107c41 0%, #15803d 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  boxShadow: '0 4px 12px rgba(16, 124, 65, 0.3)'
+                }}>
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+                    Export Organization System Excel
+                  </h2>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Official 47-employee format (.xlsx) for direct system upload
+                  </span>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowExportModal(false)} 
+                style={{ 
+                  width: '32px', 
+                  height: '32px', 
+                  borderRadius: '50%', 
+                  background: 'none', 
+                  border: '1px solid var(--border-color)', 
+                  color: 'var(--text-muted)', 
+                  cursor: 'pointer', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontSize: '14px',
+                  transition: 'all 0.2s' 
+                }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Date / Week Selection Card */}
+            <div style={{
+              backgroundColor: 'var(--header-bg)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '14px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Calendar size={14} style={{ color: '#107c41' }} />
+                <span>Select Week or Specific Date to Export</span>
+              </div>
+
+              {/* 1. Year and Week Dropdowns */}
+              <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '8px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Year
+                  </label>
+                  <select
+                    value={exportModalYear}
+                    onChange={(e) => {
+                      const yr = Number(e.target.value);
+                      setExportModalYear(yr);
+                      setExportModalWeekIndex(0);
+                      setExportCustomDatePicker('');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      outline: 'none'
+                    }}
+                  >
+                    {YEARS.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Week Schedule (Sun → Sat)
+                  </label>
+                  <select
+                    value={exportModalWeekIndex}
+                    onChange={(e) => {
+                      setExportModalWeekIndex(Number(e.target.value));
+                      setExportCustomDatePicker('');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      outline: 'none'
+                    }}
+                  >
+                    {exportModalWeeks.map((w, idx) => (
+                      <option key={w.name} value={idx}>
+                        {w.name}: {w.dates[0]} to {w.dates[6]} {idx === currentWeekIndex && exportModalYear === currentYear ? '★ (Current)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 2. Or Pick Any Date */}
+              <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '10px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  <span>Or Pick Any Date (auto-selects its full week):</span>
+                  {exportCustomDatePicker && (
+                    <button
+                      type="button"
+                      onClick={() => setExportCustomDatePicker('')}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '700', cursor: 'pointer', padding: 0 }}
+                    >
+                      Reset to Week Dropdown
+                    </button>
+                  )}
+                </label>
+                <input
+                  type="date"
+                  value={exportCustomDatePicker}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setExportCustomDatePicker(val);
+                    if (val) {
+                      const yr = parseInt(val.slice(0, 4), 10);
+                      if (yr && YEARS.includes(yr)) {
+                        setExportModalYear(yr);
+                      }
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-card)',
+                    color: 'var(--text-main)',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {/* 3. 7-Day Preview Badges */}
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  7-Day Roster Columns Preview ({exportModalDates.length === 7 ? `${exportModalDates[0]} → ${exportModalDates[6]}` : 'Selected Dates'}):
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                  {exportModalDates.map(dStr => {
+                    const dObj = new Date(dStr + 'T00:00:00');
+                    const day = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
+                    const monthDay = dStr.slice(5);
+                    return (
+                      <div
+                        key={dStr}
+                        style={{
+                          backgroundColor: 'var(--bg-card)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '6px 2px',
+                          textAlign: 'center'
+                        }}
+                      >
+                        <div style={{ fontSize: '10px', fontWeight: '800', color: '#107c41' }}>{day}</div>
+                        <div style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)' }}>{monthDay}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Specifications Card */}
+            <div style={{
+              backgroundColor: isDark ? 'rgba(16, 124, 65, 0.12)' : 'rgba(16, 124, 65, 0.06)',
+              border: '1px solid rgba(16, 124, 65, 0.25)',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              fontSize: '11px'
+            }}>
+              <div style={{ fontWeight: '800', color: '#107c41', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Check size={13} />
+                <span>Organization System Specs Guaranteed</span>
+              </div>
+              <div style={{ color: 'var(--text-muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                <div>👥 <b>47 Employees</b> (1-to-1 mapped)</div>
+                <div>🚫 <b>Zero Duplicates</b> (Clean official list)</div>
+                <div>📁 <b>Filename:</b> Sheet-YYYY-MM-DD...</div>
+                <div>⚙️ <b>Shift Codes:</b> 55939 / 55940 / etc.</div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-main)',
+                  fontWeight: '700',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={exportingSystemFile || exportModalDates.length !== 7}
+                onClick={() => handleExportSystemExcel(exportModalDates)}
+                style={{
+                  padding: '10px 22px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#107c41',
+                  color: '#FFFFFF',
+                  fontWeight: '800',
+                  fontSize: '13px',
+                  cursor: exportingSystemFile ? 'not-allowed' : 'pointer',
+                  opacity: exportingSystemFile ? 0.75 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 14px rgba(16, 124, 65, 0.35)',
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={e => !exportingSystemFile && (e.currentTarget.style.backgroundColor = '#0d6334')}
+                onMouseLeave={e => !exportingSystemFile && (e.currentTarget.style.backgroundColor = '#107c41')}
+              >
+                {exportingSystemFile ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" />
+                    <span>Generating .xlsx...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet size={16} />
+                    <span>Download System Excel (.xlsx)</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
