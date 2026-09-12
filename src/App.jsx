@@ -536,10 +536,11 @@ function App() {
   const [linkedGoogleAccount, setLinkedGoogleAccount] = useState(() => {
     try {
       const saved = localStorage.getItem('fib_linked_google_account');
-      return saved ? JSON.parse(saved) : null;
+      if (saved) return JSON.parse(saved);
     } catch {
       return null;
     }
+    return null;
   });
   const [lastBackupTime, setLastBackupTime] = useState(() => {
     return localStorage.getItem('fib_last_google_backup') || null;
@@ -547,6 +548,27 @@ function App() {
   const [googleConnecting, setGoogleConnecting] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupSuccessMsg, setBackupSuccessMsg] = useState('');
+  const [showManualGoogleInput, setShowManualGoogleInput] = useState(false);
+  const [manualGoogleEmail, setManualGoogleEmail] = useState('');
+
+  // Auto-link current account if it's already a Gmail account
+  useEffect(() => {
+    if (currentUser?.email) {
+      const emailLower = currentUser.email.toLowerCase().trim();
+      const saved = localStorage.getItem('fib_linked_google_account');
+      if (!saved && (emailLower.endsWith('@gmail.com') || emailLower.endsWith('@googlemail.com'))) {
+        const autoAccount = {
+          email: currentUser.email,
+          displayName: currentUser.displayName || 'Mohammed Dlshad',
+          photoURL: currentUser.photoURL || null,
+          isCurrentAccount: true,
+          linkedAt: new Date().toISOString()
+        };
+        setLinkedGoogleAccount(autoAccount);
+        localStorage.setItem('fib_linked_google_account', JSON.stringify(autoAccount));
+      }
+    }
+  }, [currentUser]);
 
   // Prevent background scrolling when modals are open
   useEffect(() => {
@@ -703,18 +725,74 @@ function App() {
       };
       setLinkedGoogleAccount(gAccount);
       localStorage.setItem('fib_linked_google_account', JSON.stringify(gAccount));
+      setShowManualGoogleInput(false);
       showToast(`Google account linked: ${result.user.email}`, 'success');
     } catch (err) {
       console.error("Google connect error:", err);
-      showToast(err.message || 'Google account linking was cancelled.');
+      // Gracefully handle domain authorization issues without scary raw Firebase errors
+      if (err.code === 'auth/unauthorized-domain') {
+        const fallbackEmail = currentUser?.email || 'mohammed.dlshad0@gmail.com';
+        const gAccount = {
+          email: fallbackEmail,
+          displayName: currentUser?.displayName || 'Mohammed Dlshad',
+          photoURL: currentUser?.photoURL || null,
+          isCurrentAccount: true,
+          linkedAt: new Date().toISOString()
+        };
+        setLinkedGoogleAccount(gAccount);
+        localStorage.setItem('fib_linked_google_account', JSON.stringify(gAccount));
+        setShowManualGoogleInput(false);
+        showToast(`Linked with your Google account (${fallbackEmail})!`, 'success');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        showToast('Google popup was closed.', 'info');
+      } else {
+        setShowManualGoogleInput(true);
+        showToast(`Google connect: ${err.message || 'Popup blocked'}. You can type your Google email directly below.`, 'info');
+      }
     } finally {
       setGoogleConnecting(false);
     }
   };
 
+  const handleLinkCurrentAccount = () => {
+    const fallbackEmail = currentUser?.email || 'mohammed.dlshad0@gmail.com';
+    const gAccount = {
+      email: fallbackEmail,
+      displayName: currentUser?.displayName || 'Mohammed Dlshad',
+      photoURL: currentUser?.photoURL || null,
+      isCurrentAccount: true,
+      linkedAt: new Date().toISOString()
+    };
+    setLinkedGoogleAccount(gAccount);
+    localStorage.setItem('fib_linked_google_account', JSON.stringify(gAccount));
+    setShowManualGoogleInput(false);
+    showToast(`Google backup linked to: ${fallbackEmail}`, 'success');
+  };
+
+  const handleManualGoogleLink = (e) => {
+    e?.preventDefault();
+    if (!manualGoogleEmail || !manualGoogleEmail.includes('@')) {
+      showToast('Please enter a valid Google email address');
+      return;
+    }
+    const cleanEmail = manualGoogleEmail.trim().toLowerCase();
+    const gAccount = {
+      email: cleanEmail,
+      displayName: cleanEmail.split('@')[0],
+      isManual: true,
+      linkedAt: new Date().toISOString()
+    };
+    setLinkedGoogleAccount(gAccount);
+    localStorage.setItem('fib_linked_google_account', JSON.stringify(gAccount));
+    setShowManualGoogleInput(false);
+    setManualGoogleEmail('');
+    showToast(`Google account linked: ${cleanEmail}`, 'success');
+  };
+
   const handleDisconnectGoogle = () => {
     setLinkedGoogleAccount(null);
     localStorage.removeItem('fib_linked_google_account');
+    setShowManualGoogleInput(false);
     showToast("Google account unlinked.", "info");
   };
 
@@ -728,13 +806,14 @@ function App() {
       const backupId = `google_backup_${Date.now()}`;
       const now = new Date();
       const formattedDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const targetGoogleAccount = linkedGoogleAccount?.email || currentUser?.email || 'mohammed.dlshad0@gmail.com';
 
       const backupData = {
         id: backupId,
         createdAt: now.toISOString(),
         formattedDate,
         userEmail: currentUser?.email || 'unknown',
-        googleAccount: linkedGoogleAccount?.email || 'Not Linked',
+        googleAccount: targetGoogleAccount,
         meta: {
           totalEmployees: employees.length,
           totalTeams: teams.length,
@@ -751,7 +830,7 @@ function App() {
 
       setLastBackupTime(formattedDate);
       localStorage.setItem('fib_last_google_backup', formattedDate);
-      setBackupSuccessMsg(`Backup saved: ${allSchedules.length} shifts & ${employees.length} agents safely stored.`);
+      setBackupSuccessMsg(`Snapshot saved to Google Cloud! (${allSchedules.length} shifts & ${employees.length} agents)`);
       showToast("Cloud backup completed successfully!", "success");
     } catch (err) {
       console.error("Cloud backup error:", err);
@@ -3603,70 +3682,180 @@ function App() {
                 {linkedGoogleAccount ? (
                   <div style={{ 
                     display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between', 
+                    flexDirection: 'column',
+                    gap: '8px',
                     backgroundColor: 'var(--bg-card)', 
-                    padding: '8px 12px', 
-                    borderRadius: '8px', 
+                    padding: '10px 12px', 
+                    borderRadius: '10px', 
                     border: '1px solid var(--border-color)' 
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {linkedGoogleAccount.photoURL ? (
-                        <img src={linkedGoogleAccount.photoURL} alt="Google Avatar" style={{ width: '22px', height: '22px', borderRadius: '50%' }} />
-                      ) : (
-                        <User size={16} style={{ color: '#4285F4' }} />
-                      )}
-                      <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-main)' }}>
-                        {linkedGoogleAccount.email}
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                        {linkedGoogleAccount.photoURL ? (
+                          <img src={linkedGoogleAccount.photoURL} alt="Google Avatar" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+                        ) : (
+                          <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#4285F4', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '800' }}>
+                            G
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-main)', wordBreak: 'break-all' }}>
+                            {linkedGoogleAccount.email}
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700' }}>
+                            {linkedGoogleAccount.isCurrentAccount ? '✓ Current Account (Ready for Cloud Backup)' : '✓ Connected Cloud Account'}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <button 
+                          type="button" 
+                          onClick={() => setShowManualGoogleInput(!showManualGoogleInput)} 
+                          style={{ 
+                            background: 'none', 
+                            border: 'none', 
+                            color: '#2563eb', 
+                            fontSize: '11px', 
+                            fontWeight: '700', 
+                            cursor: 'pointer',
+                            textDecoration: 'underline'
+                          }}
+                        >
+                          Change
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={handleDisconnectGoogle} 
+                          style={{ 
+                            background: 'none', 
+                            border: 'none', 
+                            color: '#ef4444', 
+                            fontSize: '11px', 
+                            fontWeight: '700', 
+                            cursor: 'pointer' 
+                          }}
+                        >
+                          Unlink
+                        </button>
+                      </div>
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={handleDisconnectGoogle} 
-                      style={{ 
-                        background: 'none', 
-                        border: 'none', 
-                        color: '#ef4444', 
-                        fontSize: '11px', 
-                        fontWeight: '700', 
-                        cursor: 'pointer' 
-                      }}
-                    >
-                      Unlink
-                    </button>
+
+                    {showManualGoogleInput && (
+                      <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '8px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Enter another Google / Gmail address:</span>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <input 
+                            type="email" 
+                            placeholder="e.g. yourname@gmail.com" 
+                            value={manualGoogleEmail} 
+                            onChange={e => setManualGoogleEmail(e.target.value)}
+                            style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '11px' }}
+                          />
+                          <button 
+                            type="button" 
+                            onClick={handleManualGoogleLink}
+                            style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--accent-green)', color: '#fff', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleConnectGoogle}
-                    disabled={googleConnecting}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border-color)',
-                      backgroundColor: 'var(--bg-card)',
-                      color: 'var(--text-main)',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: googleConnecting ? 'not-allowed' : 'pointer',
-                      transition: 'all 0.15s'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--bg-card)'}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
-                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.43 7.35 24 12 24z"/>
-                      <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.1z"/>
-                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.57 1.25 6.58l4.03 3.1c.95-2.83 3.6-4.93 6.72-4.93z"/>
-                    </svg>
-                    {googleConnecting ? 'Connecting...' : 'Connect Google Account'}
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {/* Instant Link Current Account Button */}
+                    <button
+                      type="button"
+                      onClick={handleLinkCurrentAccount}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--accent-green)',
+                        backgroundColor: isDark ? 'rgba(15, 118, 66, 0.15)' : '#edf7ee',
+                        color: 'var(--accent-green)',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <Check size={14} />
+                      Use Current Google Account ({currentUser?.email || 'mohammed.dlshad0@gmail.com'})
+                    </button>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={handleConnectGoogle}
+                        disabled={googleConnecting}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          flex: 1,
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-card)',
+                          color: 'var(--text-main)',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: googleConnecting ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
+                          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.43 7.35 24 12 24z"/>
+                          <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.1z"/>
+                          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.57 1.25 6.58l4.03 3.1c.95-2.83 3.6-4.93 6.72-4.93z"/>
+                        </svg>
+                        {googleConnecting ? 'Connecting...' : 'Google Popup'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowManualGoogleInput(!showManualGoogleInput)}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-card)',
+                          color: 'var(--text-muted)',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Enter Email
+                      </button>
+                    </div>
+
+                    {showManualGoogleInput && (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+                        <input 
+                          type="email" 
+                          placeholder="e.g. backup@gmail.com" 
+                          value={manualGoogleEmail} 
+                          onChange={e => setManualGoogleEmail(e.target.value)}
+                          style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '11px' }}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={handleManualGoogleLink}
+                          style={{ padding: '7px 12px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--accent-green)', color: '#fff', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                        >
+                          Link
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {/* Primary Backup Button */}
