@@ -346,16 +346,49 @@ function App() {
     return idx !== -1 ? idx : 0
   }) 
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('ALL')
-  const [customDate, setCustomDate] = useState('')
+  const [customFilterMode, setCustomFilterMode] = useState('single') // 'single' | 'range'
+  const [customSingleDate, setCustomSingleDate] = useState('')
+  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' })
+  const [activeCustomDates, setActiveCustomDates] = useState(null) // null = default week, or string[] of dates
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [datePickerCoords, setDatePickerCoords] = useState({ top: 0, left: 0 })
   const customDateBtnRef = useRef(null)
   const customDatePortalRef = useRef(null)
 
+  const getTodayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getRelativeDateStr = (offsetDays) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getDatesBetween = (startStr, endStr) => {
+    if (!startStr || !endStr) return [];
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T00:00:00');
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
+    const res = [];
+    const curr = new Date(start);
+    let count = 0;
+    while (curr <= end && count < 31) {
+      const y = curr.getFullYear();
+      const m = String(curr.getMonth() + 1).padStart(2, '0');
+      const d = String(curr.getDate()).padStart(2, '0');
+      res.push(`${y}-${m}-${d}`);
+      curr.setDate(curr.getDate() + 1);
+      count++;
+    }
+    return res;
+  };
+
   const toggleCustomDatePicker = () => {
     if (!showDatePicker && customDateBtnRef.current) {
       const rect = customDateBtnRef.current.getBoundingClientRect();
-      const popupWidth = 260;
+      const popupWidth = 320;
       let left = rect.left;
       if (left + popupWidth > window.innerWidth - 16) {
         left = window.innerWidth - popupWidth - 16;
@@ -393,25 +426,35 @@ function App() {
     };
   }, [showDatePicker]);
 
-  const handleCustomDateSelect = (dateStr) => {
-    if (!dateStr) {
-      setCustomDate('');
-      setShowDatePicker(false);
+  const handleApplySingleDate = (dateStr) => {
+    if (!dateStr) return;
+    setCustomSingleDate(dateStr);
+    setActiveCustomDates([dateStr]);
+    fetchSchedulesForDates([dateStr]);
+    setShowDatePicker(false);
+  };
+
+  const handleApplyDateRange = () => {
+    if (!customDateRange.start || !customDateRange.end) {
+      showToast('Please select both start and end dates');
       return;
     }
-    setCustomDate(dateStr);
-    const dateObj = new Date(dateStr);
-    if (isNaN(dateObj.getTime())) return;
-    const y = dateObj.getFullYear();
-    if (y !== currentYear) {
-      setCurrentYear(y);
+    const dates = getDatesBetween(customDateRange.start, customDateRange.end);
+    if (dates.length === 0) {
+      showToast('Start date must be before or equal to end date');
+      return;
     }
-    const weeks = generateWeeksForYear(y);
-    const wIdx = weeks.findIndex(w => w.dates.includes(dateStr));
-    if (wIdx !== -1) {
-      setCurrentWeekIndex(wIdx);
-    }
+    setActiveCustomDates(dates);
+    fetchSchedulesForDates(dates);
     setShowDatePicker(false);
+  };
+
+  const handleClearCustomFilter = () => {
+    setActiveCustomDates(null);
+    setCustomSingleDate('');
+    setCustomDateRange({ start: '', end: '' });
+    setShowDatePicker(false);
+    fetchSchedulesForWeek(currentWeekIndex, currentYear);
   };
   
   const WEEKS = useMemo(() => generateWeeksForYear(currentYear), [currentYear])
@@ -828,6 +871,48 @@ function App() {
     });
   }
 
+  function fetchSchedulesForDates(dateList) {
+    if (!dateList || dateList.length === 0) return;
+    setSchedLoading(true);
+    const sortedDates = [...dateList].sort();
+    const minDate = sortedDates[0];
+    const maxDate = sortedDates[sortedDates.length - 1];
+
+    if (unsubSchedulesRef.current) unsubSchedulesRef.current();
+    if (unsubNotesRef.current) unsubNotesRef.current();
+
+    const schedQuery = query(
+      collection(db, "schedules"),
+      where("work_date", ">=", minDate),
+      where("work_date", "<=", maxDate)
+    );
+    unsubSchedulesRef.current = onSnapshot(schedQuery, (schedSnap) => {
+      const map = {};
+      schedSnap.forEach(docSnap => {
+        const s = docSnap.data();
+        if (!map[s.employee_id]) map[s.employee_id] = {};
+        map[s.employee_id][s.work_date] = s.shift_code || '';
+      });
+      setSchedules(prev => ({ ...prev, ...map }));
+      setSchedLoading(false);
+    });
+
+    const notesQuery = query(
+      collection(db, "schedule_notes"),
+      where("work_date", ">=", minDate),
+      where("work_date", "<=", maxDate)
+    );
+    unsubNotesRef.current = onSnapshot(notesQuery, (notesSnap) => {
+      const notesMap = {};
+      notesSnap.forEach(docSnap => {
+        const n = docSnap.data();
+        if (!notesMap[n.employee_id]) notesMap[n.employee_id] = {};
+        notesMap[n.employee_id][n.work_date] = n.note;
+      });
+      setNotes(prev => ({ ...prev, ...notesMap }));
+    });
+  }
+
   const canEditShifts = () => {
     if (currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()) return true;
     const user = authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim());
@@ -971,9 +1056,13 @@ function App() {
   }
 
   const handleMonthClick = (monthIdx) => {
-    const firstWeekOfMonth = WEEKS.findIndex(w => w.monthIndex === monthIdx)
+    setActiveCustomDates(null);
+    setCustomSingleDate('');
+    setCustomDateRange({ start: '', end: '' });
+    const firstWeekOfMonth = WEEKS.findIndex(w => w.monthIndex === monthIdx);
     if (firstWeekOfMonth !== -1) {
-      setCurrentWeekIndex(firstWeekOfMonth)
+      setCurrentWeekIndex(firstWeekOfMonth);
+      fetchSchedulesForWeek(firstWeekOfMonth, currentYear);
     }
   }
 
@@ -1107,9 +1196,13 @@ function App() {
     </div>
   )
 
-  const activeDates = WEEKS[currentWeekIndex].dates
-  const activeMonthIndex = WEEKS[currentWeekIndex].monthIndex
-  const prevWeekDates = currentWeekIndex > 0 ? WEEKS[currentWeekIndex - 1].dates : []
+  const activeDates = (activeCustomDates && activeCustomDates.length > 0) 
+    ? activeCustomDates 
+    : WEEKS[currentWeekIndex].dates;
+  const activeMonthIndex = (activeCustomDates && activeCustomDates.length > 0)
+    ? new Date(activeCustomDates[0] + 'T00:00:00').getMonth()
+    : WEEKS[currentWeekIndex].monthIndex;
+  const prevWeekDates = currentWeekIndex > 0 ? WEEKS[currentWeekIndex - 1].dates : [];
 
   const filteredEmployees = employees.filter(emp => {
     if (selectedTeamFilter === 'ALL') {
@@ -1522,13 +1615,13 @@ function App() {
                   icon={<Calendar size={14} />}
                 />
 
-                {/* Custom Date Filter - Before Weeks, Green Style */}
+                {/* Custom Date Filter - Modern Popover with Single Day & Range modes */}
                 <div style={{ position: 'relative' }}>
                   <button
                     ref={customDateBtnRef}
                     onClick={toggleCustomDatePicker}
                     style={{
-                      backgroundColor: 'var(--accent-green)',
+                      backgroundColor: activeCustomDates ? '#2563eb' : 'var(--accent-green)',
                       color: '#FFFFFF',
                       border: 'none',
                       height: '36px',
@@ -1540,17 +1633,23 @@ function App() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                      boxShadow: activeCustomDates ? '0 2px 8px rgba(37, 99, 235, 0.35)' : '0 2px 4px rgba(0,0,0,0.1)',
                       whiteSpace: 'nowrap',
                       transition: 'all 0.2s'
                     }}
                   >
                     <Calendar size={14} />
-                    <span>{customDate ? customDate : 'Custom Date'}</span>
-                    {customDate ? (
+                    <span>
+                      {activeCustomDates 
+                        ? (activeCustomDates.length === 1 
+                            ? activeCustomDates[0] 
+                            : `${activeCustomDates[0].slice(5)} to ${activeCustomDates[activeCustomDates.length - 1].slice(5)} (${activeCustomDates.length}d)`) 
+                        : 'Date Filter'}
+                    </span>
+                    {activeCustomDates ? (
                       <span 
-                        onClick={(e) => { e.stopPropagation(); setCustomDate(''); }}
-                        title="Clear custom date"
+                        onClick={(e) => { e.stopPropagation(); handleClearCustomFilter(); }}
+                        title="Clear filter & return to full week"
                         style={{
                           marginLeft: '3px',
                           display: 'flex',
@@ -1581,95 +1680,357 @@ function App() {
                         left: `${datePickerCoords.left}px`,
                         backgroundColor: 'var(--bg-card)',
                         border: '1px solid var(--border-color)',
-                        borderRadius: '12px',
+                        borderRadius: '16px',
                         padding: '16px',
-                        boxShadow: '0 16px 36px rgba(0, 0, 0, 0.25)',
+                        boxShadow: '0 20px 45px rgba(0, 0, 0, 0.28)',
                         zIndex: 9999,
-                        minWidth: '260px',
+                        width: '320px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '12px'
+                        gap: '12px',
+                        boxSizing: 'border-box'
                       }}
                     >
+                      {/* Popover Header */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Calendar size={14} style={{ color: 'var(--accent-green)' }} /> Custom Date
-                        </span>
-                        {customDate && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                          <Calendar size={15} style={{ color: 'var(--accent-green)' }} />
+                          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-main)' }}>
+                            Date Filter
+                          </span>
+                        </div>
+                        {activeCustomDates ? (
                           <button
-                            onClick={() => { setCustomDate(''); setShowDatePicker(false); }}
+                            onClick={handleClearCustomFilter}
                             style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '700' }}
                           >
-                            Reset
+                            Reset to Week
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setShowDatePicker(false)}
+                            style={{ fontSize: '13px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                          >
+                            ✕
                           </button>
                         )}
                       </div>
 
-                      <input 
-                        type="date"
-                        value={customDate}
-                        onChange={(e) => handleCustomDateSelect(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-color)',
-                          backgroundColor: 'var(--input-bg)',
-                          color: 'var(--text-main)',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          outline: 'none',
-                          boxSizing: 'border-box'
-                        }}
-                      />
+                      {/* Quick Presets: Yesterday, Today, Tomorrow */}
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                          Quick Day Selection
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                          <button
+                            onClick={() => handleApplySingleDate(getRelativeDateStr(-1))}
+                            style={{
+                              padding: '7px 4px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              borderRadius: '8px',
+                              border: activeCustomDates?.length === 1 && activeCustomDates[0] === getRelativeDateStr(-1)
+                                ? '1.5px solid var(--accent-green)'
+                                : '1px solid var(--border-color)',
+                              backgroundColor: activeCustomDates?.length === 1 && activeCustomDates[0] === getRelativeDateStr(-1)
+                                ? 'rgba(15, 118, 66, 0.12)'
+                                : 'var(--hover-bg)',
+                              color: activeCustomDates?.length === 1 && activeCustomDates[0] === getRelativeDateStr(-1)
+                                ? 'var(--accent-green)'
+                                : 'var(--text-main)',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            Yesterday
+                          </button>
+                          <button
+                            onClick={() => handleApplySingleDate(getTodayStr())}
+                            style={{
+                              padding: '7px 4px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              borderRadius: '8px',
+                              border: activeCustomDates?.length === 1 && activeCustomDates[0] === getTodayStr()
+                                ? '1.5px solid var(--accent-green)'
+                                : '1px solid var(--border-color)',
+                              backgroundColor: activeCustomDates?.length === 1 && activeCustomDates[0] === getTodayStr()
+                                ? 'rgba(15, 118, 66, 0.12)'
+                                : 'var(--hover-bg)',
+                              color: activeCustomDates?.length === 1 && activeCustomDates[0] === getTodayStr()
+                                ? 'var(--accent-green)'
+                                : 'var(--text-main)',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            Today
+                          </button>
+                          <button
+                            onClick={() => handleApplySingleDate(getRelativeDateStr(1))}
+                            style={{
+                              padding: '7px 4px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              borderRadius: '8px',
+                              border: activeCustomDates?.length === 1 && activeCustomDates[0] === getRelativeDateStr(1)
+                                ? '1.5px solid var(--accent-green)'
+                                : '1px solid var(--border-color)',
+                              backgroundColor: activeCustomDates?.length === 1 && activeCustomDates[0] === getRelativeDateStr(1)
+                                ? 'rgba(15, 118, 66, 0.12)'
+                                : 'var(--hover-bg)',
+                              color: activeCustomDates?.length === 1 && activeCustomDates[0] === getRelativeDateStr(1)
+                                ? 'var(--accent-green)'
+                                : 'var(--text-main)',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            Tomorrow
+                          </button>
+                        </div>
+                      </div>
 
-                      <div style={{ display: 'flex', gap: '8px', paddingTop: '2px' }}>
+                      {/* Mode Segmented Switch: Single Day vs Date Range */}
+                      <div style={{
+                        display: 'flex',
+                        backgroundColor: 'var(--hover-bg)',
+                        borderRadius: '8px',
+                        padding: '3px',
+                        gap: '2px'
+                      }}>
                         <button
-                          onClick={() => {
-                            const today = new Date();
-                            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                            handleCustomDateSelect(todayStr);
-                          }}
+                          onClick={() => setCustomFilterMode('single')}
                           style={{
                             flex: 1,
-                            padding: '8px 12px',
-                            fontSize: '12px',
+                            padding: '6px 0',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: customFilterMode === 'single' ? 'var(--bg-card)' : 'transparent',
+                            color: customFilterMode === 'single' ? 'var(--accent-green)' : 'var(--text-muted)',
+                            boxShadow: customFilterMode === 'single' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          Single Day
+                        </button>
+                        <button
+                          onClick={() => setCustomFilterMode('range')}
+                          style={{
+                            flex: 1,
+                            padding: '6px 0',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: customFilterMode === 'range' ? 'var(--bg-card)' : 'transparent',
+                            color: customFilterMode === 'range' ? 'var(--accent-green)' : 'var(--text-muted)',
+                            boxShadow: customFilterMode === 'range' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          Date Range
+                        </button>
+                      </div>
+
+                      {/* Mode Specific Inputs */}
+                      {customFilterMode === 'single' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>
+                            Pick Specific Date:
+                          </label>
+                          <input 
+                            type="date"
+                            value={customSingleDate}
+                            onChange={(e) => setCustomSingleDate(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '9px 12px',
+                              borderRadius: '8px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--input-bg)',
+                              color: 'var(--text-main)',
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              outline: 'none',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          <button
+                            onClick={() => handleApplySingleDate(customSingleDate)}
+                            disabled={!customSingleDate}
+                            style={{
+                              marginTop: '2px',
+                              padding: '9px',
+                              fontSize: '12px',
+                              fontWeight: '700',
+                              borderRadius: '8px',
+                              border: 'none',
+                              backgroundColor: customSingleDate ? 'var(--accent-green)' : 'var(--border-color)',
+                              color: '#FFFFFF',
+                              cursor: customSingleDate ? 'pointer' : 'not-allowed',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            Apply Day Filter
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                                From:
+                              </label>
+                              <input 
+                                type="date"
+                                value={customDateRange.start}
+                                onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
+                                style={{
+                                  width: '100%',
+                                  padding: '7px 8px',
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--border-color)',
+                                  backgroundColor: 'var(--input-bg)',
+                                  color: 'var(--text-main)',
+                                  fontSize: '12px',
+                                  fontWeight: '600',
+                                  outline: 'none',
+                                  boxSizing: 'border-box'
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                                To:
+                              </label>
+                              <input 
+                                type="date"
+                                value={customDateRange.end}
+                                onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
+                                style={{
+                                  width: '100%',
+                                  padding: '7px 8px',
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--border-color)',
+                                  backgroundColor: 'var(--input-bg)',
+                                  color: 'var(--text-main)',
+                                  fontSize: '12px',
+                                  fontWeight: '600',
+                                  outline: 'none',
+                                  boxSizing: 'border-box'
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Quick Range Shortcuts */}
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+                            <button
+                              onClick={() => {
+                                setCustomDateRange({ start: getTodayStr(), end: getRelativeDateStr(2) });
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '4px 6px',
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--hover-bg)',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              3 Days
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCustomDateRange({ start: getTodayStr(), end: getRelativeDateStr(6) });
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '4px 6px',
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--hover-bg)',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              7 Days
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCustomDateRange({ start: getTodayStr(), end: getRelativeDateStr(13) });
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '4px 6px',
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--hover-bg)',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              14 Days
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={handleApplyDateRange}
+                            disabled={!customDateRange.start || !customDateRange.end}
+                            style={{
+                              marginTop: '2px',
+                              padding: '9px',
+                              fontSize: '12px',
+                              fontWeight: '700',
+                              borderRadius: '8px',
+                              border: 'none',
+                              backgroundColor: (customDateRange.start && customDateRange.end) ? 'var(--accent-green)' : 'var(--border-color)',
+                              color: '#FFFFFF',
+                              cursor: (customDateRange.start && customDateRange.end) ? 'pointer' : 'not-allowed',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            Apply Range Filter
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Clear & Revert button */}
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '10px', display: 'flex', justifyContent: 'center' }}>
+                        <button
+                          onClick={handleClearCustomFilter}
+                          style={{
+                            width: '100%',
+                            padding: '7px',
+                            fontSize: '11px',
                             fontWeight: '700',
                             borderRadius: '6px',
                             border: '1px solid var(--border-color)',
-                            backgroundColor: 'var(--hover-bg)',
-                            color: 'var(--text-main)',
+                            backgroundColor: 'transparent',
+                            color: 'var(--text-muted)',
                             cursor: 'pointer',
-                            textAlign: 'center',
-                            transition: 'background 0.15s'
+                            transition: 'all 0.15s'
                           }}
-                          onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--border-color)'}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
                         >
-                          Today
+                          Show Full Week View
                         </button>
-                        {customDate && (
-                          <button
-                            onClick={() => { setCustomDate(''); setShowDatePicker(false); }}
-                            style={{
-                              flex: 1,
-                              padding: '8px 12px',
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              borderRadius: '6px',
-                              border: 'none',
-                              backgroundColor: '#fee2e2',
-                              color: '#b91c1c',
-                              cursor: 'pointer',
-                              textAlign: 'center',
-                              transition: 'background 0.15s'
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fca5a5'}
-                            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fee2e2'}
-                          >
-                            Clear
-                          </button>
-                        )}
                       </div>
                     </div>,
                     document.body
@@ -1679,7 +2040,7 @@ function App() {
                 {/* Week Navigator - Compact & Narrow to avoid toolbar scrollbar */}
                 <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--accent-green)', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', height: '36px' }}>
                   <button
-                    onClick={() => setCurrentWeekIndex(i => Math.max(0, i - 1))}
+                    onClick={() => { setActiveCustomDates(null); setCurrentWeekIndex(i => Math.max(0, i - 1)); }}
                     disabled={currentWeekIndex === 0}
                     style={{ background: 'none', border: 'none', color: '#fff', cursor: currentWeekIndex === 0 ? 'not-allowed' : 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center', opacity: currentWeekIndex === 0 ? 0.4 : 1, borderRight: '1px solid rgba(255,255,255,0.2)', transition: 'background 0.2s' }}
                     onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
@@ -1692,7 +2053,7 @@ function App() {
                     <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.8)', fontWeight: '500' }}>({WEEKS[currentWeekIndex]?.label.replace(/ /g, '')})</span>
                   </div>
                   <button
-                    onClick={() => setCurrentWeekIndex(i => Math.min(WEEKS.length - 1, i + 1))}
+                    onClick={() => { setActiveCustomDates(null); setCurrentWeekIndex(i => Math.min(WEEKS.length - 1, i + 1)); }}
                     disabled={currentWeekIndex === WEEKS.length - 1}
                     style={{ background: 'none', border: 'none', color: '#fff', cursor: currentWeekIndex === WEEKS.length - 1 ? 'not-allowed' : 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center', opacity: currentWeekIndex === WEEKS.length - 1 ? 0.4 : 1, borderLeft: '1px solid rgba(255,255,255,0.2)', transition: 'background 0.2s' }}
                     onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
@@ -1730,11 +2091,10 @@ function App() {
               {/* Months stretched across the full toolbar width */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: '460px', justifyContent: 'space-between' }}>
                 {MONTHS.map((month, idx) => {
-                  const isActive = !customDate && idx === activeMonthIndex;
+                  const isActive = !activeCustomDates && idx === activeMonthIndex;
                   return (
                     <button key={month} 
                          onClick={() => {
-                           setCustomDate('');
                            handleMonthClick(idx);
                          }}
                          style={{ 
@@ -1783,6 +2143,43 @@ function App() {
               boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
               position: 'relative'
             }}>
+            {activeCustomDates && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 14px',
+                backgroundColor: isDark ? 'rgba(37, 99, 235, 0.12)' : 'rgba(37, 99, 235, 0.06)',
+                borderBottom: '1px solid var(--border-color)',
+                fontSize: '11px',
+                fontWeight: '700',
+                color: '#2563eb'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Calendar size={13} />
+                  <span>
+                    Showing {activeCustomDates.length === 1 ? `single date: ${activeCustomDates[0]}` : `${activeCustomDates.length} days: ${activeCustomDates[0]} → ${activeCustomDates[activeCustomDates.length - 1]}`}
+                  </span>
+                </div>
+                <button
+                  onClick={handleClearCustomFilter}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#ef4444',
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  ✕ Revert to Full Week
+                </button>
+              </div>
+            )}
+
               <table className="excel-table" style={{ width: '100%', minWidth: '780px', borderSpacing: '0 4px', borderCollapse: 'separate' }}>
                 <thead>
                   <tr>
@@ -1791,152 +2188,101 @@ function App() {
                       top: 0,
                       zIndex: 35,
                       backgroundColor: 'var(--header-bg)',
-                      paddingLeft: '16px', 
-                      paddingRight: '12px',
-                      height: '52px',
+                      paddingLeft: '14px', 
+                      paddingRight: '8px',
+                      height: '32px',
                       borderBottom: '1px solid var(--border-color)',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                      boxShadow: 'none',
                       verticalAlign: 'middle'
                     }}>
-                      <div style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
-                        gap: '8px', 
-                        padding: '6px 12px', 
-                        borderRadius: '20px', 
-                        backgroundColor: 'var(--bg-card)', 
-                        border: '1px solid var(--border-color)',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                      }}>
-                        <Users size={14} style={{ color: 'var(--accent-green)' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '100%' }}>
+                        <Users size={12} style={{ color: 'var(--accent-green)' }} />
                         <span style={{ fontSize: '11px', fontWeight: '800', letterSpacing: '0.04em', color: 'var(--text-main)', textTransform: 'uppercase' }}>
                           Agent
                         </span>
                         <span style={{ 
                           fontSize: '10px', 
                           fontWeight: '700', 
-                          color: 'var(--accent-green)',
-                          backgroundColor: 'rgba(15, 118, 66, 0.1)',
-                          padding: '1px 6px',
-                          borderRadius: '10px'
+                          color: 'var(--text-muted)'
                         }}>
-                          {filteredEmployees.length}
+                          ({filteredEmployees.length})
                         </span>
                       </div>
                     </th>
-                    {activeDates.map((date, i) => {
+                    {activeDates.map((date) => {
                       const today = new Date();
                       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                       const isToday = date === todayStr;
-                      const isCustom = customDate === date;
+                      const isCustom = activeCustomDates && activeCustomDates.includes(date);
+                      const dObj = new Date(date + 'T00:00:00');
+                      const dayName = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
+                      const monthShort = isNaN(dObj.getTime()) ? '' : dObj.toLocaleString('default', { month: 'short' });
+                      const dayNum = date.split('-')[2];
 
                       return (
                         <th key={date} className="date-col" style={{ 
                           position: 'sticky',
                           top: 0,
                           zIndex: 30,
-                          backgroundColor: 'var(--header-bg)',
-                          padding: '4px 3px', 
-                          height: '52px',
-                          borderBottom: '1px solid var(--border-color)',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                          backgroundColor: isToday 
+                            ? (isDark ? 'rgba(15, 118, 66, 0.15)' : 'rgba(15, 118, 66, 0.06)')
+                            : isCustom
+                            ? (isDark ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.06)')
+                            : 'var(--header-bg)',
+                          padding: '0 4px', 
+                          height: '32px',
+                          borderBottom: isToday 
+                            ? '2px solid var(--accent-green)' 
+                            : isCustom 
+                            ? '2px solid #2563eb' 
+                            : '1px solid var(--border-color)',
+                          boxShadow: 'none',
                           verticalAlign: 'middle',
-                          transition: 'all 0.2s'
+                          transition: 'all 0.15s'
                         }}>
                           <div style={{ 
                             display: 'flex', 
-                            flexDirection: 'column',
                             alignItems: 'center', 
                             justifyContent: 'center',
-                            gap: '2px',
+                            gap: '5px',
                             height: '100%',
-                            padding: '4px 4px',
-                            borderRadius: '8px',
-                            backgroundColor: isToday 
-                              ? (isDark ? 'rgba(15, 118, 66, 0.2)' : 'rgba(15, 118, 66, 0.08)') 
-                              : isCustom 
-                              ? (isDark ? 'rgba(37, 99, 235, 0.2)' : 'rgba(37, 99, 235, 0.08)') 
-                              : 'transparent',
-                            border: isToday 
-                              ? '1px solid rgba(15, 118, 66, 0.35)' 
-                              : isCustom 
-                              ? '1px solid rgba(37, 99, 235, 0.35)' 
-                              : '1px solid transparent',
-                            boxShadow: isToday ? '0 2px 8px rgba(15, 118, 66, 0.12)' : 'none',
-                            transition: 'all 0.2s'
+                            whiteSpace: 'nowrap'
                           }}>
-                            {/* Day Name (Soft Title Case: Sun, Mon, etc.) */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ 
-                                fontSize: '11px', 
-                                fontWeight: '700', 
-                                color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
-                                letterSpacing: '0.02em',
-                                lineHeight: 1
-                              }}>
-                                {DAY_NAMES[i]}
-                              </span>
-                              {isToday && (
-                                <span style={{
-                                  width: '5px',
-                                  height: '5px',
-                                  borderRadius: '50%',
-                                  backgroundColor: 'var(--accent-green)',
-                                  display: 'inline-block'
-                                }} />
-                              )}
-                            </div>
-
-                            {/* Day Number and Month */}
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px', lineHeight: 1 }}>
-                              <span style={{ 
-                                fontSize: '15px', 
-                                fontWeight: '800',
-                                color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-main)',
-                                letterSpacing: '-0.02em'
-                              }}>
-                                {date.split('-')[2]}
-                              </span>
-                              <span style={{ 
-                                fontSize: '10px', 
-                                fontWeight: '600', 
-                                color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)',
-                                opacity: 0.8
-                              }}>
-                                {new Date(date).toLocaleString('default', { month: 'short' })}
-                              </span>
-                            </div>
-
-                            {/* Today / Filter Badge */}
-                            {isToday ? (
-                              <span style={{ 
-                                fontSize: '8px', 
-                                fontWeight: '800', 
-                                backgroundColor: 'var(--accent-green)', 
-                                color: '#FFFFFF',
-                                padding: '1px 6px',
-                                borderRadius: '10px',
-                                letterSpacing: '0.04em',
-                                lineHeight: 1.1,
-                                marginTop: '1px'
-                              }}>
-                                Today
-                              </span>
-                            ) : isCustom ? (
-                              <span style={{ 
-                                fontSize: '8px', 
-                                fontWeight: '800', 
-                                backgroundColor: '#2563eb', 
-                                color: '#FFFFFF',
-                                padding: '1px 6px',
-                                borderRadius: '10px',
-                                letterSpacing: '0.04em',
-                                lineHeight: 1.1,
-                                marginTop: '1px'
-                              }}>
-                                Filter
-                              </span>
-                            ) : null}
+                            <span style={{ 
+                              fontSize: '11px', 
+                              fontWeight: '700', 
+                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
+                              letterSpacing: '0.02em',
+                              lineHeight: 1
+                            }}>
+                              {dayName}
+                            </span>
+                            <span style={{ 
+                              fontSize: '12px', 
+                              fontWeight: '800',
+                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-main)',
+                              lineHeight: 1
+                            }}>
+                              {dayNum}
+                            </span>
+                            <span style={{ 
+                              fontSize: '10px', 
+                              fontWeight: '500', 
+                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)',
+                              opacity: 0.7,
+                              lineHeight: 1
+                            }}>
+                              {monthShort}
+                            </span>
+                            {isToday && (
+                              <span style={{
+                                width: '5px',
+                                height: '5px',
+                                borderRadius: '50%',
+                                backgroundColor: 'var(--accent-green)',
+                                display: 'inline-block'
+                              }} title="Today" />
+                            )}
                           </div>
                         </th>
                       );
