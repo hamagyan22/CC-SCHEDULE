@@ -92,7 +92,12 @@ button:active, select:active {
   font-size: 11px;
   padding: 12px 8px;
   text-transform: capitalize;
-  border-bottom: 2px solid var(--bg-main);
+  border-bottom: 2px solid var(--border-color);
+}
+.excel-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 .excel-table td {
   background-color: var(--bg-card);

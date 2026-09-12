@@ -6,7 +6,7 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile 
 import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote, Award, Shield, GraduationCap, Headset, Folder } from 'lucide-react'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const YEARS = [2026, 2027, 2028, 2029, 2030]
 
 function generateWeeksForYear(year) {
@@ -346,6 +346,42 @@ function App() {
     return idx !== -1 ? idx : 0
   }) 
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('ALL')
+  const [customDate, setCustomDate] = useState('')
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const datePickerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
+        setShowDatePicker(false);
+      }
+    }
+    if (showDatePicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showDatePicker]);
+
+  const handleCustomDateSelect = (dateStr) => {
+    if (!dateStr) {
+      setCustomDate('');
+      setShowDatePicker(false);
+      return;
+    }
+    setCustomDate(dateStr);
+    const dateObj = new Date(dateStr);
+    if (isNaN(dateObj.getTime())) return;
+    const y = dateObj.getFullYear();
+    if (y !== currentYear) {
+      setCurrentYear(y);
+    }
+    const weeks = generateWeeksForYear(y);
+    const wIdx = weeks.findIndex(w => w.dates.includes(dateStr));
+    if (wIdx !== -1) {
+      setCurrentWeekIndex(wIdx);
+    }
+    setShowDatePicker(false);
+  };
   
   const WEEKS = useMemo(() => generateWeeksForYear(currentYear), [currentYear])
 
@@ -994,7 +1030,18 @@ function App() {
   const prevWeekDates = currentWeekIndex > 0 ? WEEKS[currentWeekIndex - 1].dates : []
 
   const filteredEmployees = employees.filter(emp => {
-    if (selectedTeamFilter !== 'ALL' && emp.team_id !== selectedTeamFilter) return false;
+    if (selectedTeamFilter === 'ALL') {
+      // allow all
+    } else if (selectedTeamFilter === 'ALL_CALL') {
+      const teamName = (emp.teams?.name || teams.find(t => t.id === emp.team_id)?.name || '').toLowerCase();
+      if (!teamName.includes('call')) return false;
+    } else if (selectedTeamFilter === 'ALL_CHAT') {
+      const teamName = (emp.teams?.name || teams.find(t => t.id === emp.team_id)?.name || '').toLowerCase();
+      if (!teamName.includes('chat')) return false;
+    } else {
+      if (emp.team_id !== selectedTeamFilter) return false;
+    }
+
     if (searchQuery.trim() !== '') {
       if (!emp.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     }
@@ -1321,6 +1368,8 @@ function App() {
                   onChange={(val) => setSelectedTeamFilter(val)}
                   options={[
                     { value: 'ALL', label: '🏢 All Teams' },
+                    { value: 'ALL_CALL', label: '📞 All Call Teams' },
+                    { value: 'ALL_CHAT', label: '💬 All Chat Teams' },
                     ...teams.map(t => {
                       let emoji = '👥';
                       const n = t.name.toLowerCase();
@@ -1335,17 +1384,172 @@ function App() {
                   ]}
                   icon={<Users size={14} />}
                 />
+
+                {/* Custom Date Filter */}
+                <div ref={datePickerRef} style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    style={{
+                      height: '36px',
+                      padding: '0 14px',
+                      borderRadius: '6px',
+                      border: customDate ? '1px solid var(--accent-green)' : '1px solid var(--border-color)',
+                      backgroundColor: customDate ? 'var(--accent-green)' : 'var(--bg-card)',
+                      color: customDate ? '#FFFFFF' : 'var(--text-main)',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
+                      transition: 'all 0.2s',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <Calendar size={14} />
+                    <span>{customDate ? `Date: ${customDate}` : 'Custom Date'}</span>
+                    {customDate ? (
+                      <span 
+                        onClick={(e) => { e.stopPropagation(); setCustomDate(''); }}
+                        title="Clear custom date"
+                        style={{
+                          marginLeft: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(255,255,255,0.25)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✕
+                      </span>
+                    ) : (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: showDatePicker ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path d="m6 9 6 6 6-6"/></svg>
+                    )}
+                  </button>
+
+                  {showDatePicker && (
+                    <div className="animate-in fade-in zoom-in-95 duration-150" style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 6px)',
+                      left: 0,
+                      backgroundColor: 'var(--bg-card)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '14px',
+                      boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
+                      zIndex: 100,
+                      minWidth: '240px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Calendar size={13} style={{ color: 'var(--accent-green)' }} /> Custom Date
+                        </span>
+                        {customDate && (
+                          <button
+                            onClick={() => { setCustomDate(''); setShowDatePicker(false); }}
+                            style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '700' }}
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+
+                      <input 
+                        type="date"
+                        value={customDate}
+                        onChange={(e) => handleCustomDateSelect(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--input-bg)',
+                          color: 'var(--text-main)',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          outline: 'none',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+
+                      <div style={{ display: 'flex', gap: '6px', paddingTop: '2px' }}>
+                        <button
+                          onClick={() => {
+                            const today = new Date();
+                            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                            handleCustomDateSelect(todayStr);
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '6px 10px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            borderRadius: '4px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--hover-bg)',
+                            color: 'var(--text-main)',
+                            cursor: 'pointer',
+                            textAlign: 'center'
+                          }}
+                        >
+                          Today
+                        </button>
+                        {customDate && (
+                          <button
+                            onClick={() => { setCustomDate(''); setShowDatePicker(false); }}
+                            style={{
+                              flex: 1,
+                              padding: '6px 10px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              borderRadius: '4px',
+                              border: 'none',
+                              backgroundColor: '#fee2e2',
+                              color: '#b91c1c',
+                              cursor: 'pointer',
+                              textAlign: 'center'
+                            }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 16px' }}></div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 {MONTHS.map((month, idx) => {
-                  const isActive = idx === activeMonthIndex;
+                  const isActive = !customDate && idx === activeMonthIndex;
                   return (
                     <button key={month} 
-                         onClick={() => handleMonthClick(idx)}
-                         style={{ cursor: 'pointer', padding: '8px 12px', border: 'none', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: isActive ? 'var(--accent-green)' : 'transparent', color: isActive ? '#FFFFFF' : 'var(--text-muted)', transition: 'all 0.2s' }}>
+                         onClick={() => {
+                           setCustomDate('');
+                           handleMonthClick(idx);
+                         }}
+                         style={{ 
+                           cursor: 'pointer', 
+                           padding: '6px 12px', 
+                           border: 'none', 
+                           borderRadius: '6px', 
+                           fontSize: '12px', 
+                           fontWeight: isActive ? '800' : '600', 
+                           backgroundColor: isActive ? 'var(--accent-green)' : 'transparent', 
+                           color: isActive ? '#FFFFFF' : 'var(--text-muted)', 
+                           boxShadow: isActive ? '0 2px 6px rgba(15, 118, 66, 0.3)' : 'none',
+                           transition: 'all 0.2s' 
+                         }}>
                       {month}
                     </button>
                   )
@@ -1353,22 +1557,121 @@ function App() {
               </div>
             </div>
 
-            <div style={{ overflowX: 'auto', paddingBottom: '40px' }}>
-              <table className="excel-table">
+            <div className="custom-scrollbar" style={{ 
+              maxHeight: 'calc(100vh - 195px)', 
+              overflow: 'auto', 
+              borderBottom: '1px solid var(--border-color)', 
+              borderRadius: '0 0 8px 8px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+              position: 'relative'
+            }}>
+              <table className="excel-table" style={{ width: '100%', minWidth: '780px', borderSpacing: '0 4px', borderCollapse: 'separate' }}>
                 <thead>
                   <tr>
-                    <th className="employee-col" style={{ paddingLeft: '24px', color: 'var(--text-muted)', fontSize: '11px', fontWeight: '800', letterSpacing: '0.05em', textTransform: 'uppercase', borderBottom: '1px solid var(--border-color)' }}>
-                      Agent
-                    </th>
-                    {activeDates.map((date, i) => (
-                      <th key={date} className="date-col" style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                          <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{DAY_NAMES[i]}</span>
-                          <span style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)' }}>{date.split('-')[2]}</span>
-                          <span style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)' }}>{new Date(date).toLocaleString('default', { month: 'short' })}</span>
+                    <th className="employee-col" style={{ 
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 35,
+                      backgroundColor: 'var(--header-bg)',
+                      paddingLeft: '20px', 
+                      paddingTop: '10px',
+                      paddingBottom: '10px',
+                      borderBottom: '2px solid var(--border-color)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                          width: '26px',
+                          height: '26px',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(15, 118, 66, 0.12)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--accent-green)'
+                        }}>
+                          <Users size={14} />
                         </div>
-                      </th>
-                    ))}
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: '800', letterSpacing: '0.08em', color: 'var(--text-main)', textTransform: 'uppercase' }}>
+                            Agent
+                          </div>
+                          <div style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)' }}>
+                            {filteredEmployees.length} Members
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    {activeDates.map((date, i) => {
+                      const today = new Date();
+                      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                      const isToday = date === todayStr;
+                      const isCustom = customDate === date;
+
+                      return (
+                        <th key={date} className="date-col" style={{ 
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 30,
+                          backgroundColor: isToday ? 'var(--bg-card)' : 'var(--header-bg)',
+                          padding: '8px 4px', 
+                          borderBottom: isToday ? '2px solid var(--accent-green)' : isCustom ? '2px solid #2563eb' : '2px solid var(--border-color)',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                          transition: 'all 0.2s'
+                        }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            padding: '4px 2px',
+                            borderRadius: '8px',
+                            backgroundColor: isToday ? 'rgba(15, 118, 66, 0.08)' : isCustom ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
+                            border: isToday ? '1px solid rgba(15, 118, 66, 0.3)' : isCustom ? '1px solid rgba(37, 99, 235, 0.4)' : '1px solid transparent',
+                            transition: 'all 0.2s'
+                          }}>
+                            <span style={{ 
+                              fontSize: '10px', 
+                              fontWeight: '800', 
+                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
+                              textTransform: 'uppercase', 
+                              letterSpacing: '0.06em',
+                              marginBottom: '2px'
+                            }}>
+                              {DAY_NAMES[i]}
+                            </span>
+                            
+                            <div style={{ 
+                              width: '28px', 
+                              height: '28px', 
+                              borderRadius: isToday || isCustom ? '50%' : '6px',
+                              backgroundColor: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'transparent',
+                              color: isToday || isCustom ? '#FFFFFF' : 'var(--text-main)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '14px', 
+                              fontWeight: '900',
+                              boxShadow: isToday ? '0 2px 6px rgba(15, 118, 66, 0.4)' : isCustom ? '0 2px 6px rgba(37, 99, 235, 0.4)' : 'none',
+                              transition: 'all 0.2s'
+                            }}>
+                              {date.split('-')[2]}
+                            </div>
+                            
+                            <span style={{ 
+                              fontSize: '9px', 
+                              fontWeight: '700', 
+                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)',
+                              marginTop: '2px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em'
+                            }}>
+                              {isToday ? 'TODAY' : isCustom ? 'FILTER' : new Date(date).toLocaleString('default', { month: 'short' })}
+                            </span>
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 {groupedEmployees.map(group => (
