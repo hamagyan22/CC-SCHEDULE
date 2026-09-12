@@ -559,6 +559,46 @@ function App() {
     return getDatesBetween(exportRangeStart, exportRangeEnd);
   }, [exportRangeStart, exportRangeEnd]);
 
+
+  const [employees, setEmployees] = useState([])
+  const [schedules, setSchedules] = useState({})
+  const [teams, setTeams] = useState([])
+  const [shiftTypes, setShiftTypes] = useState([])
+  
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [editingTeam, setEditingTeam] = useState(null)
+  const [editingEmployee, setEditingEmployee] = useState(null)
+  const [editingShift, setEditingShift] = useState(null)
+  const [schedLoading, setSchedLoading] = useState(false)
+  const [notes, setNotes] = useState({}) // empId → date → noteText
+  const [notePopup, setNotePopup] = useState(null) // { empId, date, top, left, currentNote }
+  const notePopupRef = useRef(null)
+
+  const [newTeamName, setNewTeamName] = useState('')
+  const [newEmpName, setNewEmpName] = useState('')
+  const [newEmpTeam, setNewEmpTeam] = useState('')
+  const [newShiftCode, setNewShiftCode] = useState('')
+  const [newShiftStart, setNewShiftStart] = useState('')
+  const [newShiftEnd, setNewShiftEnd] = useState('')
+  
+  const ADMIN_EMAIL = 'mohammed.dlshad0@gmail.com'
+  const userRoles = {
+    'hazad465@gmail.com': '🎓 Trainer',
+    'larakamilmohammad@gmail.com': '⭐ Quality',
+    'jalalburghol1@gmail.com': '👔 Manager',
+    'ankidoboya10@gmail.com': '👤 Team Leader',
+    'hamajano090@gmail.com': '⭐ Quality',
+    'yonisbalindi@gmail.com': '👤 Team Leader',
+  };
+  const [currentUser, setCurrentUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  
+  const unsubSchedulesRef = useRef(null);
+  const unsubNotesRef = useRef(null);
+  const unsubStatsRef = useRef(null);
+  
+  const [todayStats, setTodayStats] = useState({ callMorning: 0, callEvening: 0, callNight: 0, chatMorning: 0, chatEvening: 0, chatNight: 0, teamLeaderMorning: 0, teamLeaderEvening: 0, otherTeams: {} })
+
   const activeStats = useMemo(() => {
     const targetDate = selectedStatsDate || getTodayStr();
     let callM = 0; let callE = 0; let callN = 0;
@@ -640,45 +680,6 @@ function App() {
       otherTeams: others
     };
   }, [selectedStatsDate, schedules, employees, teams, todayStats]);
-
-  const [employees, setEmployees] = useState([])
-  const [schedules, setSchedules] = useState({})
-  const [teams, setTeams] = useState([])
-  const [shiftTypes, setShiftTypes] = useState([])
-  
-  const [initialLoading, setInitialLoading] = useState(true)
-  const [editingTeam, setEditingTeam] = useState(null)
-  const [editingEmployee, setEditingEmployee] = useState(null)
-  const [editingShift, setEditingShift] = useState(null)
-  const [schedLoading, setSchedLoading] = useState(false)
-  const [notes, setNotes] = useState({}) // empId → date → noteText
-  const [notePopup, setNotePopup] = useState(null) // { empId, date, top, left, currentNote }
-  const notePopupRef = useRef(null)
-
-  const [newTeamName, setNewTeamName] = useState('')
-  const [newEmpName, setNewEmpName] = useState('')
-  const [newEmpTeam, setNewEmpTeam] = useState('')
-  const [newShiftCode, setNewShiftCode] = useState('')
-  const [newShiftStart, setNewShiftStart] = useState('')
-  const [newShiftEnd, setNewShiftEnd] = useState('')
-  
-  const ADMIN_EMAIL = 'mohammed.dlshad0@gmail.com'
-  const userRoles = {
-    'hazad465@gmail.com': '🎓 Trainer',
-    'larakamilmohammad@gmail.com': '⭐ Quality',
-    'jalalburghol1@gmail.com': '👔 Manager',
-    'ankidoboya10@gmail.com': '👤 Team Leader',
-    'hamajano090@gmail.com': '⭐ Quality',
-    'yonisbalindi@gmail.com': '👤 Team Leader',
-  };
-  const [currentUser, setCurrentUser] = useState(null)
-  const [authLoading, setAuthLoading] = useState(true)
-  
-  const unsubSchedulesRef = useRef(null);
-  const unsubNotesRef = useRef(null);
-  const unsubStatsRef = useRef(null);
-  
-  const [todayStats, setTodayStats] = useState({ callMorning: 0, callEvening: 0, callNight: 0, chatMorning: 0, chatEvening: 0, chatNight: 0, teamLeaderMorning: 0, teamLeaderEvening: 0, otherTeams: {} })
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' })
   const [showHistory, setShowHistory] = useState(false);
