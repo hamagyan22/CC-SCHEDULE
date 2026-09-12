@@ -2,8 +2,8 @@ import React, { useEffect, useState, useMemo, useRef, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { db, auth } from './firebase'
 import { collection, getDocs, doc, setDoc, deleteDoc, addDoc, updateDoc, query, where, writeBatch, onSnapshot, orderBy, limit } from "firebase/firestore";
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
-import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote, Award, Shield, GraduationCap, Headset, Folder } from 'lucide-react'
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote, Award, Shield, GraduationCap, Headset, Folder, Cloud, Database, Download, Check, UploadCloud, RefreshCw, FileSpreadsheet, ExternalLink, Camera, Mail, Lock, User } from 'lucide-react'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -532,6 +532,22 @@ function App() {
   const [editPhotoURL, setEditPhotoURL] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
 
+  // Google Account Linking & Cloud Backup State
+  const [linkedGoogleAccount, setLinkedGoogleAccount] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fib_linked_google_account');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [lastBackupTime, setLastBackupTime] = useState(() => {
+    return localStorage.getItem('fib_last_google_backup') || null;
+  });
+  const [googleConnecting, setGoogleConnecting] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupSuccessMsg, setBackupSuccessMsg] = useState('');
+
   // Prevent background scrolling when modals are open
   useEffect(() => {
     if (showHistory || showAccess || notePopup || showProfileModal) {
@@ -670,6 +686,140 @@ function App() {
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleConnectGoogle = async () => {
+    setGoogleConnecting(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      const gAccount = {
+        email: result.user.email,
+        displayName: result.user.displayName,
+        photoURL: result.user.photoURL,
+        uid: result.user.uid,
+        linkedAt: new Date().toISOString()
+      };
+      setLinkedGoogleAccount(gAccount);
+      localStorage.setItem('fib_linked_google_account', JSON.stringify(gAccount));
+      showToast(`Google account linked: ${result.user.email}`, 'success');
+    } catch (err) {
+      console.error("Google connect error:", err);
+      showToast(err.message || 'Google account linking was cancelled.');
+    } finally {
+      setGoogleConnecting(false);
+    }
+  };
+
+  const handleDisconnectGoogle = () => {
+    setLinkedGoogleAccount(null);
+    localStorage.removeItem('fib_linked_google_account');
+    showToast("Google account unlinked.", "info");
+  };
+
+  const handleBackupToGoogleCloud = async () => {
+    setBackupLoading(true);
+    setBackupSuccessMsg('');
+    try {
+      const schedSnap = await getDocs(collection(db, "schedules"));
+      const allSchedules = schedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const backupId = `google_backup_${Date.now()}`;
+      const now = new Date();
+      const formattedDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      const backupData = {
+        id: backupId,
+        createdAt: now.toISOString(),
+        formattedDate,
+        userEmail: currentUser?.email || 'unknown',
+        googleAccount: linkedGoogleAccount?.email || 'Not Linked',
+        meta: {
+          totalEmployees: employees.length,
+          totalTeams: teams.length,
+          totalShiftTypes: shiftTypes.length,
+          totalSchedules: allSchedules.length
+        },
+        employees: employees.map(e => ({ id: e.id, name: e.name, team_id: e.team_id, teamName: e.teams?.name || '' })),
+        teams,
+        shiftTypes,
+        schedules: allSchedules
+      };
+
+      await setDoc(doc(db, "google_backups", backupId), backupData);
+
+      setLastBackupTime(formattedDate);
+      localStorage.setItem('fib_last_google_backup', formattedDate);
+      setBackupSuccessMsg(`Backup saved: ${allSchedules.length} shifts & ${employees.length} agents safely stored.`);
+      showToast("Cloud backup completed successfully!", "success");
+    } catch (err) {
+      console.error("Cloud backup error:", err);
+      showToast(`Backup failed: ${err.message}`);
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleExportToGoogleSheets = () => {
+    try {
+      let csv = '\uFEFF';
+      csv += 'Agent Name,Team,Date,Day,Shift Code,Exported At\n';
+
+      employees.forEach(emp => {
+        const teamName = emp.teams?.name || 'No Team';
+        activeDates.forEach(date => {
+          const dObj = new Date(date + 'T00:00:00');
+          const dayName = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
+          const shift = schedules[emp.id]?.[date] || 'OFF';
+          csv += `"${(emp.name || '').replace(/"/g, '""')}","${teamName}","${date}","${dayName}","${shift}","${new Date().toISOString()}"\n`;
+        });
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `FIB_Schedule_GoogleSheets_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast("CSV for Google Sheets exported successfully!", "success");
+    } catch (err) {
+      showToast(`Export error: ${err.message}`);
+    }
+  };
+
+  const handleDownloadJSONBackup = async () => {
+    try {
+      const schedSnap = await getDocs(collection(db, "schedules"));
+      const allSchedules = schedSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const payload = {
+        app: "FIB Schedule Manager",
+        exportedAt: new Date().toISOString(),
+        user: currentUser?.email,
+        googleAccount: linkedGoogleAccount?.email || null,
+        employees,
+        teams,
+        shiftTypes,
+        schedules: allSchedules
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `FIB_Full_Backup_GoogleDrive_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast("Full backup (.json) downloaded successfully!", "success");
+    } catch (err) {
+      showToast(`Download error: ${err.message}`);
+    }
   };
 
   const showToast = (message, type = 'error') => {
@@ -2181,18 +2331,19 @@ function App() {
             )}
 
               <table className="excel-table" style={{ width: '100%', minWidth: '780px', borderSpacing: '0 4px', borderCollapse: 'separate' }}>
-                <thead>
-                  <tr>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 40, backgroundColor: 'var(--header-bg)' }}>
+                  <tr style={{ backgroundColor: 'var(--header-bg)' }}>
                     <th className="employee-col" style={{ 
                       position: 'sticky',
                       top: 0,
-                      zIndex: 35,
+                      zIndex: 45,
                       backgroundColor: 'var(--header-bg)',
+                      opacity: 1,
                       paddingLeft: '14px', 
                       paddingRight: '8px',
                       height: '32px',
                       borderBottom: '1px solid var(--border-color)',
-                      boxShadow: 'none',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                       verticalAlign: 'middle'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '100%' }}>
@@ -2219,16 +2370,20 @@ function App() {
                       const monthShort = isNaN(dObj.getTime()) ? '' : dObj.toLocaleString('default', { month: 'short' });
                       const dayNum = date.split('-')[2];
 
+                      // 100% solid, fully opaque hex backgrounds - prevents any scroll content bleeding through
+                      const solidHeaderBg = isToday 
+                        ? (isDark ? '#062d1a' : '#edf7ee')
+                        : isCustom
+                        ? (isDark ? '#0e2340' : '#ebf5ff')
+                        : 'var(--header-bg)';
+
                       return (
                         <th key={date} className="date-col" style={{ 
                           position: 'sticky',
                           top: 0,
-                          zIndex: 30,
-                          backgroundColor: isToday 
-                            ? (isDark ? 'rgba(15, 118, 66, 0.15)' : 'rgba(15, 118, 66, 0.06)')
-                            : isCustom
-                            ? (isDark ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.06)')
-                            : 'var(--header-bg)',
+                          zIndex: 40,
+                          backgroundColor: solidHeaderBg,
+                          opacity: 1,
                           padding: '0 4px', 
                           height: '32px',
                           borderBottom: isToday 
@@ -2236,9 +2391,9 @@ function App() {
                             : isCustom 
                             ? '2px solid #2563eb' 
                             : '1px solid var(--border-color)',
-                          boxShadow: 'none',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                           verticalAlign: 'middle',
-                          transition: 'all 0.15s'
+                          transition: 'background-color 0.15s'
                         }}>
                           <div style={{ 
                             display: 'flex', 
@@ -3165,80 +3320,503 @@ function App() {
         </div>
       )}
 
-      {/* Profile Settings Modal */}
+      {/* Modern Profile & Google Cloud Backup Modal */}
       {showProfileModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: 'var(--bg-main)', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', color: 'var(--text-main)' }}>
-                👤 Edit Profile
-              </h2>
-              <button onClick={() => setShowProfileModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', 
+          backdropFilter: 'blur(10px)', 
+          WebkitBackdropFilter: 'blur(10px)',
+          zIndex: 1000, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{ 
+            backgroundColor: 'var(--bg-card)', 
+            borderRadius: '20px', 
+            padding: '24px 26px', 
+            width: '100%', 
+            maxWidth: '470px', 
+            maxHeight: '92vh', 
+            overflowY: 'auto', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '18px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)', 
+            border: '1px solid var(--border-color)',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, var(--accent-green) 0%, #16a34a 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  boxShadow: '0 4px 12px rgba(15, 118, 66, 0.25)'
+                }}>
+                  <User size={20} />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+                    Edit Profile & Cloud Backup
+                  </h2>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Personalize your identity and sync database backups
+                  </span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowProfileModal(false)} 
+                style={{ 
+                  width: '32px', 
+                  height: '32px', 
+                  borderRadius: '50%', 
+                  background: 'none', 
+                  border: '1px solid var(--border-color)', 
+                  color: 'var(--text-muted)', 
+                  cursor: 'pointer', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontSize: '14px',
+                  transition: 'all 0.2s' 
+                }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+              >
+                ✕
+              </button>
             </div>
             
-            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '8px' }}>
-                <label style={{ position: 'relative', cursor: 'pointer', borderRadius: '50%', overflow: 'hidden', width: '90px', height: '90px', border: '3px solid var(--accent-green)', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+              {/* Avatar Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                <label 
+                  style={{ 
+                    position: 'relative', 
+                    cursor: 'pointer', 
+                    borderRadius: '50%', 
+                    width: '92px', 
+                    height: '92px', 
+                    border: '3px solid var(--accent-green)', 
+                    boxShadow: '0 6px 18px rgba(15, 118, 66, 0.2)',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.03)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                  title="Click to upload custom photo"
+                >
                   {editPhotoURL ? (
-                    <img src={editPhotoURL} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={editPhotoURL} alt="Preview" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                   ) : (
-                    <div style={{ width: '100%', height: '100%', backgroundColor: 'var(--header-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)', fontSize: '36px', fontWeight: '800' }}>
+                    <div style={{ width: '100%', height: '100%', borderRadius: '50%', backgroundColor: 'var(--header-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)', fontSize: '36px', fontWeight: '800' }}>
                       {(editDisplayName || currentUser?.email)?.[0]?.toUpperCase()}
                     </div>
                   )}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '30%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px', fontWeight: 'bold' }}>
-                    Upload
+                  <div style={{ 
+                    position: 'absolute', 
+                    bottom: '0', 
+                    right: '0', 
+                    width: '30px', 
+                    height: '30px', 
+                    borderRadius: '50%', 
+                    backgroundColor: 'var(--accent-green)', 
+                    border: '2px solid var(--bg-card)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    color: '#fff',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+                  }}>
+                    <Camera size={14} />
                   </div>
                   <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
                 </label>
 
-                <div style={{ marginTop: '16px', display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '300px' }}>
-                   {[
-                     '/avatars/banker_male_1.jpg',
-                     '/avatars/banker_female_1.jpg',
-                     '/avatars/banker_male_2.jpg',
-                     '/avatars/banker_female_2.jpg',
-                     '/avatars/banker_male_3.jpg',
-                     '/avatars/banker_female_3.jpg',
-                     ...(currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? ['/avatars/banker_admin.jpg'] : [])
-                   ].map(url => (
-                     <img 
-                       key={url} 
-                       src={url} 
-                       alt="avatar" 
-                       onClick={() => setEditPhotoURL(url)}
-                       style={{ width: '45px', height: '45px', borderRadius: '50%', cursor: 'pointer', border: editPhotoURL === url ? '2px solid var(--accent-green)' : '2px solid transparent', transition: 'transform 0.1s' }}
-                       onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                       onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                     />
-                   ))}
+                {/* Avatar Presets */}
+                <div style={{ width: '100%', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    Quick Avatar Presets
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                     {[
+                       '/avatars/banker_male_1.jpg',
+                       '/avatars/banker_female_1.jpg',
+                       '/avatars/banker_male_2.jpg',
+                       '/avatars/banker_female_2.jpg',
+                       '/avatars/banker_male_3.jpg',
+                       '/avatars/banker_female_3.jpg',
+                       ...(currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? ['/avatars/banker_admin.jpg'] : [])
+                     ].map(url => (
+                       <img 
+                         key={url} 
+                         src={url} 
+                         alt="avatar preset" 
+                         onClick={() => setEditPhotoURL(url)}
+                         style={{ 
+                           width: '42px', 
+                           height: '42px', 
+                           borderRadius: '50%', 
+                           cursor: 'pointer', 
+                           border: editPhotoURL === url ? '2.5px solid var(--accent-green)' : '2px solid transparent',
+                           outline: editPhotoURL === url ? '2px solid rgba(15, 118, 66, 0.3)' : 'none',
+                           boxShadow: editPhotoURL === url ? '0 0 10px rgba(15, 118, 66, 0.3)' : 'none',
+                           transition: 'all 0.15s' 
+                         }}
+                         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                       />
+                     ))}
+                  </div>
                 </div>
               </div>
 
+              {/* Username Input */}
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>Username</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '6px' }}>
+                  <User size={13} style={{ color: 'var(--accent-green)' }} />
+                  Username / Display Name
+                </label>
                 <input 
                   type="text" 
-                  placeholder="Enter username..." 
+                  placeholder="Enter your name..." 
                   value={editDisplayName}
                   onChange={(e) => setEditDisplayName(e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', boxSizing: 'border-box' }}
+                  style={{ 
+                    width: '100%', 
+                    padding: '10px 14px', 
+                    borderRadius: '10px', 
+                    border: '1px solid var(--border-color)', 
+                    backgroundColor: 'var(--input-bg)', 
+                    color: 'var(--text-main)', 
+                    boxSizing: 'border-box',
+                    fontSize: '13px',
+                    fontWeight: '600'
+                  }}
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>Role (Job Title)</label>
-                <div style={{ padding: '10px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-main)', color: 'var(--text-muted)', fontSize: '14px', border: '1px solid var(--border-color)', opacity: 0.8, cursor: 'not-allowed' }}>
-                  {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : 
-                   (authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim()) ? '👤 Team Leader' :
-                   (userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader'))}
+              {/* Account & Role Read-only Pills */}
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1fr 1fr', 
+                gap: '10px', 
+                backgroundColor: 'var(--header-bg)', 
+                padding: '12px', 
+                borderRadius: '12px',
+                border: '1px solid var(--border-color)'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                    <Mail size={12} />
+                    Account Email
+                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={currentUser?.email}>
+                    {currentUser?.email || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                    <Shield size={12} />
+                    System Role
+                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: 'var(--accent-green)' }}>
+                    {currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() ? '👑 Admin' : 
+                     (authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim()) ? '👤 Team Leader' :
+                     (userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader'))}
+                  </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-                <button type="button" onClick={() => setShowProfileModal(false)} style={{ padding: '10px 20px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" disabled={profileSaving} style={{ padding: '10px 20px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--accent-green)', color: 'white', fontWeight: 'bold', cursor: profileSaving ? 'not-allowed' : 'pointer', opacity: profileSaving ? 0.7 : 1 }}>
+              {/* Dedicated Google Cloud Data Backup Section */}
+              <div style={{ 
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#f8fafc', 
+                border: '1px solid var(--border-color)', 
+                borderRadius: '14px', 
+                padding: '16px', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '12px' 
+              }}>
+                {/* Google Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.43 7.35 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.1z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.57 1.25 6.58l4.03 3.1c.95-2.83 3.6-4.93 6.72-4.93z"/>
+                    </svg>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-main)' }}>
+                        Google Cloud Data Backup
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        Synchronize schedule database snapshots
+                      </div>
+                    </div>
+                  </div>
+
+                  {linkedGoogleAccount ? (
+                    <span style={{ 
+                      fontSize: '11px', 
+                      fontWeight: '800', 
+                      color: '#16a34a', 
+                      backgroundColor: isDark ? 'rgba(22, 163, 74, 0.2)' : '#dcfce7', 
+                      padding: '3px 9px', 
+                      borderRadius: '20px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '4px' 
+                    }}>
+                      <Check size={12} /> Connected
+                    </span>
+                  ) : (
+                    <span style={{ 
+                      fontSize: '11px', 
+                      fontWeight: '700', 
+                      color: 'var(--text-muted)', 
+                      backgroundColor: 'var(--header-bg)', 
+                      padding: '3px 9px', 
+                      borderRadius: '20px', 
+                      border: '1px solid var(--border-color)' 
+                    }}>
+                      Not Linked
+                    </span>
+                  )}
+                </div>
+
+                {/* Google Account Linking Bar */}
+                {linkedGoogleAccount ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    backgroundColor: 'var(--bg-card)', 
+                    padding: '8px 12px', 
+                    borderRadius: '8px', 
+                    border: '1px solid var(--border-color)' 
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {linkedGoogleAccount.photoURL ? (
+                        <img src={linkedGoogleAccount.photoURL} alt="Google Avatar" style={{ width: '22px', height: '22px', borderRadius: '50%' }} />
+                      ) : (
+                        <User size={16} style={{ color: '#4285F4' }} />
+                      )}
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-main)' }}>
+                        {linkedGoogleAccount.email}
+                      </span>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={handleDisconnectGoogle} 
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        color: '#ef4444', 
+                        fontSize: '11px', 
+                        fontWeight: '700', 
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      Unlink
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleConnectGoogle}
+                    disabled={googleConnecting}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: googleConnecting ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--bg-card)'}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.43 7.35 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.1z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.57 1.25 6.58l4.03 3.1c.95-2.83 3.6-4.93 6.72-4.93z"/>
+                    </svg>
+                    {googleConnecting ? 'Connecting...' : 'Connect Google Account'}
+                  </button>
+                )}
+
+                {/* Primary Backup Button */}
+                <button
+                  type="button"
+                  onClick={handleBackupToGoogleCloud}
+                  disabled={backupLoading}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: 'var(--accent-green)',
+                    color: '#fff',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    cursor: backupLoading ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 8px rgba(15, 118, 66, 0.25)',
+                    opacity: backupLoading ? 0.75 : 1
+                  }}
+                >
+                  {backupLoading ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      Creating Database Snapshot...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud size={15} />
+                      Backup Database to Google Cloud Now
+                    </>
+                  )}
+                </button>
+
+                {/* Backup Status and Timestamps */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', padding: '0 2px' }}>
+                  <span>Last Cloud Backup:</span>
+                  <span style={{ fontWeight: '700', color: lastBackupTime ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                    {lastBackupTime || 'None yet'}
+                  </span>
+                </div>
+
+                {backupSuccessMsg && (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    padding: '6px 10px', 
+                    borderRadius: '6px', 
+                    backgroundColor: isDark ? 'rgba(22, 163, 74, 0.2)' : '#dcfce7', 
+                    color: '#16a34a', 
+                    fontSize: '11px', 
+                    fontWeight: '700' 
+                  }}>
+                    <Check size={12} />
+                    {backupSuccessMsg}
+                  </div>
+                )}
+
+                {/* Export Tools for Google Sheets / Google Drive */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '2px' }}>
+                  <button
+                    type="button"
+                    onClick={handleExportToGoogleSheets}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title="Download CSV formatted for Google Sheets import"
+                  >
+                    <FileSpreadsheet size={13} style={{ color: '#16a34a' }} />
+                    Export Sheets CSV
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadJSONBackup}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title="Download full JSON snapshot file for Google Drive"
+                  >
+                    <Database size={13} style={{ color: '#2563eb' }} />
+                    Download JSON
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowProfileModal(false)} 
+                  style={{ 
+                    padding: '10px 18px', 
+                    borderRadius: '10px', 
+                    border: '1px solid var(--border-color)', 
+                    backgroundColor: 'transparent', 
+                    color: 'var(--text-main)', 
+                    fontWeight: '700', 
+                    fontSize: '13px',
+                    cursor: 'pointer' 
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={profileSaving} 
+                  style={{ 
+                    padding: '10px 22px', 
+                    borderRadius: '10px', 
+                    border: 'none', 
+                    backgroundColor: 'var(--accent-green)', 
+                    color: 'white', 
+                    fontWeight: '800', 
+                    fontSize: '13px',
+                    cursor: profileSaving ? 'not-allowed' : 'pointer', 
+                    opacity: profileSaving ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(15, 118, 66, 0.25)'
+                  }}
+                >
                   {profileSaving ? 'Saving...' : 'Save Profile'}
                 </button>
               </div>

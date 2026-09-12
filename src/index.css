@@ -94,11 +94,20 @@ button:active, select:active {
   height: 32px;
   text-transform: capitalize;
   border-bottom: 1px solid var(--border-color);
+  opacity: 1 !important;
+}
+.excel-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background-color: var(--header-bg);
 }
 .excel-table thead th {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 40;
+  background-color: var(--header-bg);
+  opacity: 1 !important;
 }
 .excel-table td {
   background-color: var(--bg-card);
