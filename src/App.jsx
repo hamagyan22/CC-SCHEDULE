@@ -422,7 +422,7 @@ function App() {
   const unsubNotesRef = useRef(null);
   const unsubStatsRef = useRef(null);
   
-  const [todayStats, setTodayStats] = useState({ callMorning: 0, callEvening: 0, callNight: 0, chatMorning: 0, chatEvening: 0, chatNight: 0, otherTeams: {} })
+  const [todayStats, setTodayStats] = useState({ callMorning: 0, callEvening: 0, callNight: 0, chatMorning: 0, chatEvening: 0, chatNight: 0, teamLeaderMorning: 0, teamLeaderEvening: 0, otherTeams: {} })
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' })
   const [showHistory, setShowHistory] = useState(false);
@@ -523,11 +523,35 @@ function App() {
     e.preventDefault();
     setProfileSaving(true);
     try {
+      const email = currentUser?.email?.toLowerCase().trim();
+      const isDataUrl = editPhotoURL && editPhotoURL.startsWith('data:');
+      
+      // Persist custom uploaded image locally so it works without Firebase Auth length limit
+      if (editPhotoURL && email) {
+        try {
+          localStorage.setItem(`fib_user_photo_${email}`, editPhotoURL);
+        } catch (storageErr) {
+          console.warn("Could not save to localStorage", storageErr);
+        }
+      } else if (!editPhotoURL && email) {
+        localStorage.removeItem(`fib_user_photo_${email}`);
+      }
+
+      // If it's a data URL longer than 2000 chars, Firebase Auth updateProfile throws "Photo URL too long"
+      // So only send short URLs to Firebase Auth (e.g. /avatars/... or short links)
+      const authPhotoURL = (isDataUrl && editPhotoURL.length > 2000) ? null : (editPhotoURL || null);
+
       await updateProfile(auth.currentUser, {
         displayName: editDisplayName || null,
-        photoURL: editPhotoURL || null
+        ...(authPhotoURL !== undefined ? { photoURL: authPhotoURL } : {})
       });
-      setCurrentUser({ ...auth.currentUser });
+
+      setCurrentUser(prev => ({
+        ...prev,
+        displayName: editDisplayName,
+        photoURL: editPhotoURL
+      }));
+
       setShowProfileModal(false);
       showToast("Profile updated successfully!", "success");
     } catch (err) {
@@ -544,8 +568,8 @@ function App() {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 150;
-        const MAX_HEIGHT = 150;
+        const MAX_WIDTH = 120;
+        const MAX_HEIGHT = 120;
         let width = img.width;
         let height = img.height;
 
@@ -566,7 +590,7 @@ function App() {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
         
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
         setEditPhotoURL(dataUrl);
       };
       img.src = event.target.result;
@@ -584,6 +608,12 @@ function App() {
   // Auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && user.email) {
+        const localPhoto = localStorage.getItem(`fib_user_photo_${user.email.toLowerCase().trim()}`);
+        if (localPhoto) {
+          user.photoURL = localPhoto;
+        }
+      }
       setCurrentUser(user)
       setAuthLoading(false)
     });
@@ -640,9 +670,11 @@ function App() {
     const tms = teamsSnap.docs.map(d => ({id: d.id, ...d.data()}));
     
     const empTeamMap = {};
+    const empNameMap = {};
     empsSnap.forEach(e => {
       const team = tms.find(t => t.id === e.data().team_id);
       empTeamMap[e.id] = team ? team.name : 'No Team';
+      empNameMap[e.id] = e.data().name || '';
     });
 
     if (unsubStatsRef.current) unsubStatsRef.current();
@@ -651,12 +683,14 @@ function App() {
     unsubStatsRef.current = onSnapshot(schedQuery, (schedSnap) => {
       let callM = 0; let callE = 0; let callN = 0;
       let chatM = 0; let chatE = 0; let chatN = 0;
+      let leaderM = 0; let leaderE = 0;
       let others = {};
 
       schedSnap.forEach(docSnap => {
         const sched = docSnap.data();
         const originalTeamName = empTeamMap[sched.employee_id] || 'No Team';
         const teamNameLower = originalTeamName.toLowerCase();
+        const empNameLower = (empNameMap[sched.employee_id] || '').toLowerCase();
         
         const code = (sched.shift_code || '').toUpperCase();
         if (['OFF','OUT','V','H','M','S','EMERGENCY', ''].includes(code)) return;
@@ -670,8 +704,24 @@ function App() {
         else if (eveningShifts.includes(code)) shiftType = 'evening';
         else if (nightShifts.includes(code)) shiftType = 'night';
 
+        // Check Team Leaders specifically (Enkidu = Morning, Younis = Evening)
+        if (teamNameLower.includes('leader') || empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو') || empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
+          if (empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو')) {
+            leaderM++;
+          } else if (empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
+            leaderE++;
+          } else if (shiftType === 'morning') {
+            leaderM++;
+          } else if (shiftType === 'evening') {
+            leaderE++;
+          } else {
+            if (code.startsWith('A') || code === 'L') leaderM++;
+            else leaderE++;
+          }
+          return;
+        }
+
         const isExcludedTeam = teamNameLower.includes('quality') || 
-                               teamNameLower.includes('leader') || 
                                teamNameLower.includes('trainer') || 
                                teamNameLower.includes('help desk') || 
                                teamNameLower.includes('helpdesk');
@@ -695,6 +745,7 @@ function App() {
       setTodayStats({ 
         callMorning: callM, callEvening: callE, callNight: callN, 
         chatMorning: chatM, chatEvening: chatE, chatNight: chatN, 
+        teamLeaderMorning: leaderM, teamLeaderEvening: leaderE,
         otherTeams: others 
       });
     });
@@ -1230,35 +1281,58 @@ function App() {
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
             <div style={{ flex: 1, marginRight: '12px' }}>
               <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'capitalize', letterSpacing: '0.08em', marginBottom: '12px' }}>🏢 Other Teams <span style={{ color: 'var(--accent-green)', fontSize: '10px' }}>· Today</span></p>
-              <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-                {Object.keys(todayStats.otherTeams).length === 0 ? (
-                   <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No other agents scheduled.</span>
-                ) : (
-                  Object.entries(todayStats.otherTeams).map(([team, count], idx, arr) => {
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Team Leaders - Split into Morning & Evening */}
+                <div style={{ minWidth: '130px' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '26px', fontWeight: '900', color: 'var(--accent-green)', lineHeight: '1' }}>
+                        {todayStats.teamLeaderMorning || 0}
+                      </div>
+                      <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        🌅 Morning
+                      </div>
+                    </div>
+                    <div style={{ width: '1px', height: '28px', backgroundColor: 'var(--border-color)' }}></div>
+                    <div>
+                      <div style={{ fontSize: '26px', fontWeight: '900', color: '#F59E0B', lineHeight: '1' }}>
+                        {todayStats.teamLeaderEvening || 0}
+                      </div>
+                      <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        🌆 Evening
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '700', color: '#ec4899', marginTop: '6px' }}>
+                    <Shield size={13} color="#ec4899" />
+                    Team Leaders
+                  </div>
+                </div>
+
+                {/* Other Teams (Quality, Help Desk, etc.) */}
+                {Object.entries(todayStats.otherTeams)
+                  .filter(([team]) => !team.toLowerCase().includes('leader'))
+                  .map(([team, count]) => {
                     let teamColor = 'var(--text-main)';
                     let TeamIcon = Folder;
                     const lower = team.toLowerCase();
                     if (lower.includes('quality')) { teamColor = '#14b8a6'; TeamIcon = Award; }
-                    else if (lower.includes('leader')) { teamColor = '#ec4899'; TeamIcon = Shield; }
                     else if (lower.includes('trainer')) { teamColor = '#8b5cf6'; TeamIcon = GraduationCap; }
                     else if (lower.includes('help desk') || lower.includes('helpdesk')) { teamColor = '#f97316'; TeamIcon = Headset; }
                     
                     return (
                       <React.Fragment key={team}>
-                        <div style={{ minWidth: '60px' }}>
-                          <div style={{ fontSize: '30px', fontWeight: '900', color: teamColor, lineHeight: '1' }}>{count}</div>
+                        <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
+                        <div style={{ minWidth: '55px' }}>
+                          <div style={{ fontSize: '26px', fontWeight: '900', color: teamColor, lineHeight: '1' }}>{count}</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginTop: '6px' }}>
                             <TeamIcon size={13} color={teamColor} />
                             {team}
                           </div>
                         </div>
-                        {idx < arr.length - 1 && (
-                          <div style={{ width: '1px', height: '35px', backgroundColor: 'var(--border-color)' }}></div>
-                        )}
                       </React.Fragment>
                     )
-                  })
-                )}
+                  })}
               </div>
             </div>
             <div style={{ height: '44px', width: '44px', minWidth: '44px', borderRadius: '12px', backgroundColor: 'var(--header-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }}>
@@ -1327,94 +1401,46 @@ function App() {
         {/* SCHEDULE TAB */}
         {currentTab === 'schedule' && (
           <div className="animate-in fade-in duration-300">
-            <div className="custom-scrollbar" style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', backgroundColor: 'var(--header-bg)', overflowX: 'auto', borderBottom: '1px solid var(--border-color)', borderRadius: '8px 8px 0 0' }}>
+            <div className="custom-scrollbar" style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', backgroundColor: 'var(--header-bg)', overflowX: 'auto', borderBottom: '1px solid var(--border-color)', borderRadius: '8px 8px 0 0', gap: '6px', scrollbarWidth: 'none' }}>
               
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <CustomSelect
                   value={currentYear}
                   onChange={(val) => handleYearChange(val)}
                   options={YEARS.map(y => ({ value: y, label: String(y) }))}
                   icon={<Calendar size={14} />}
                 />
-  
-                {/* Week Navigator - Arrow style */}
-                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--accent-green)', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', height: '36px' }}>
-                  <button
-                    onClick={() => setCurrentWeekIndex(i => Math.max(0, i - 1))}
-                    disabled={currentWeekIndex === 0}
-                    style={{ background: 'none', border: 'none', color: '#fff', cursor: currentWeekIndex === 0 ? 'not-allowed' : 'pointer', padding: '0 10px', height: '100%', display: 'flex', alignItems: 'center', opacity: currentWeekIndex === 0 ? 0.4 : 1, borderRight: '1px solid rgba(255,255,255,0.2)', transition: 'background 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                  </button>
-                  <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '160px', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#fff', letterSpacing: '0.03em' }}>{WEEKS[currentWeekIndex]?.name}</span>
-                    <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)', fontWeight: '500' }}>({WEEKS[currentWeekIndex]?.label})</span>
-                  </div>
-                  <button
-                    onClick={() => setCurrentWeekIndex(i => Math.min(WEEKS.length - 1, i + 1))}
-                    disabled={currentWeekIndex === WEEKS.length - 1}
-                    style={{ background: 'none', border: 'none', color: '#fff', cursor: currentWeekIndex === WEEKS.length - 1 ? 'not-allowed' : 'pointer', padding: '0 10px', height: '100%', display: 'flex', alignItems: 'center', opacity: currentWeekIndex === WEEKS.length - 1 ? 0.4 : 1, borderLeft: '1px solid rgba(255,255,255,0.2)', transition: 'background 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                  </button>
-                </div>
-  
-                <CustomSelect
-                  value={selectedTeamFilter}
-                  onChange={(val) => setSelectedTeamFilter(val)}
-                  options={[
-                    { value: 'ALL', label: '🏢 All Teams' },
-                    { value: 'ALL_CALL', label: '📞 All Call Teams' },
-                    { value: 'ALL_CHAT', label: '💬 All Chat Teams' },
-                    ...teams.map(t => {
-                      let emoji = '👥';
-                      const n = t.name.toLowerCase();
-                      if (n.includes('call')) emoji = '📞';
-                      else if (n.includes('chat')) emoji = '💬';
-                      else if (n.includes('help')) emoji = '💻';
-                      else if (n.includes('quality')) emoji = '✨';
-                      else if (n.includes('train')) emoji = '🎓';
-                      else if (n.includes('leader')) emoji = '👑';
-                      return { value: t.id, label: `${emoji} ${t.name}` };
-                    })
-                  ]}
-                  icon={<Users size={14} />}
-                />
 
-                {/* Custom Date Filter */}
+                {/* Custom Date Filter - Before Weeks, Green Style */}
                 <div ref={datePickerRef} style={{ position: 'relative' }}>
                   <button
                     onClick={() => setShowDatePicker(!showDatePicker)}
                     style={{
+                      backgroundColor: 'var(--accent-green)',
+                      color: '#FFFFFF',
+                      border: 'none',
                       height: '36px',
-                      padding: '0 14px',
+                      padding: '0 12px',
                       borderRadius: '6px',
-                      border: customDate ? '1px solid var(--accent-green)' : '1px solid var(--border-color)',
-                      backgroundColor: customDate ? 'var(--accent-green)' : 'var(--bg-card)',
-                      color: customDate ? '#FFFFFF' : 'var(--text-main)',
-                      fontSize: '12px',
-                      fontWeight: '700',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
-                      transition: 'all 0.2s',
-                      whiteSpace: 'nowrap'
+                      gap: '6px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.2s'
                     }}
                   >
                     <Calendar size={14} />
-                    <span>{customDate ? `Date: ${customDate}` : 'Custom Date'}</span>
+                    <span>{customDate ? customDate : 'Custom Date'}</span>
                     {customDate ? (
                       <span 
                         onClick={(e) => { e.stopPropagation(); setCustomDate(''); }}
                         title="Clear custom date"
                         style={{
-                          marginLeft: '4px',
+                          marginLeft: '3px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1422,7 +1448,8 @@ function App() {
                           height: '16px',
                           borderRadius: '50%',
                           backgroundColor: 'rgba(255,255,255,0.25)',
-                          cursor: 'pointer'
+                          cursor: 'pointer',
+                          fontSize: '11px'
                         }}
                       >
                         ✕
@@ -1439,7 +1466,7 @@ function App() {
                       left: 0,
                       backgroundColor: 'var(--bg-card)',
                       border: '1px solid var(--border-color)',
-                      borderRadius: '8px',
+                      borderRadius: '10px',
                       padding: '14px',
                       boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
                       zIndex: 100,
@@ -1525,11 +1552,59 @@ function App() {
                     </div>
                   )}
                 </div>
+  
+                {/* Week Navigator - Compact & Narrow to avoid toolbar scrollbar */}
+                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--accent-green)', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', height: '36px' }}>
+                  <button
+                    onClick={() => setCurrentWeekIndex(i => Math.max(0, i - 1))}
+                    disabled={currentWeekIndex === 0}
+                    style={{ background: 'none', border: 'none', color: '#fff', cursor: currentWeekIndex === 0 ? 'not-allowed' : 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center', opacity: currentWeekIndex === 0 ? 0.4 : 1, borderRight: '1px solid rgba(255,255,255,0.2)', transition: 'background 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                  </button>
+                  <div style={{ padding: '0 8px', display: 'flex', alignItems: 'center', gap: '4px', minWidth: '105px', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '800', color: '#fff', letterSpacing: '0.02em' }}>{WEEKS[currentWeekIndex]?.name}</span>
+                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.8)', fontWeight: '500' }}>({WEEKS[currentWeekIndex]?.label.replace(/ /g, '')})</span>
+                  </div>
+                  <button
+                    onClick={() => setCurrentWeekIndex(i => Math.min(WEEKS.length - 1, i + 1))}
+                    disabled={currentWeekIndex === WEEKS.length - 1}
+                    style={{ background: 'none', border: 'none', color: '#fff', cursor: currentWeekIndex === WEEKS.length - 1 ? 'not-allowed' : 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center', opacity: currentWeekIndex === WEEKS.length - 1 ? 0.4 : 1, borderLeft: '1px solid rgba(255,255,255,0.2)', transition: 'background 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                  </button>
+                </div>
+  
+                <CustomSelect
+                  value={selectedTeamFilter}
+                  onChange={(val) => setSelectedTeamFilter(val)}
+                  options={[
+                    { value: 'ALL', label: '🏢 All Teams' },
+                    { value: 'ALL_CALL', label: '📞 All Call Teams' },
+                    { value: 'ALL_CHAT', label: '💬 All Chat Teams' },
+                    ...teams.map(t => {
+                      let emoji = '👥';
+                      const n = t.name.toLowerCase();
+                      if (n.includes('call')) emoji = '📞';
+                      else if (n.includes('chat')) emoji = '💬';
+                      else if (n.includes('help')) emoji = '💻';
+                      else if (n.includes('quality')) emoji = '✨';
+                      else if (n.includes('train')) emoji = '🎓';
+                      else if (n.includes('leader')) emoji = '👑';
+                      return { value: t.id, label: `${emoji} ${t.name}` };
+                    })
+                  ]}
+                  icon={<Users size={14} />}
+                />
               </div>
 
-              <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 16px' }}></div>
+              <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--border-color)', margin: '0 8px' }}></div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {MONTHS.map((month, idx) => {
                   const isActive = !customDate && idx === activeMonthIndex;
                   return (
@@ -1540,15 +1615,15 @@ function App() {
                          }}
                          style={{ 
                            cursor: 'pointer', 
-                           padding: '6px 12px', 
+                           padding: '5px 8px', 
                            border: 'none', 
-                           borderRadius: '6px', 
-                           fontSize: '12px', 
+                           borderRadius: '5px', 
+                           fontSize: '11px', 
                            fontWeight: isActive ? '800' : '600', 
                            backgroundColor: isActive ? 'var(--accent-green)' : 'transparent', 
                            color: isActive ? '#FFFFFF' : 'var(--text-muted)', 
-                           boxShadow: isActive ? '0 2px 6px rgba(15, 118, 66, 0.3)' : 'none',
-                           transition: 'all 0.2s' 
+                           boxShadow: isActive ? '0 2px 4px rgba(15, 118, 66, 0.3)' : 'none',
+                           transition: 'all 0.15s' 
                          }}>
                       {month}
                     </button>
@@ -1573,33 +1648,20 @@ function App() {
                       top: 0,
                       zIndex: 35,
                       backgroundColor: 'var(--header-bg)',
-                      paddingLeft: '20px', 
-                      paddingTop: '10px',
-                      paddingBottom: '10px',
-                      borderBottom: '2px solid var(--border-color)',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                      paddingLeft: '16px', 
+                      paddingRight: '8px',
+                      height: '36px',
+                      borderBottom: '1px solid var(--border-color)',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{
-                          width: '26px',
-                          height: '26px',
-                          borderRadius: '6px',
-                          backgroundColor: 'rgba(15, 118, 66, 0.12)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--accent-green)'
-                        }}>
-                          <Users size={14} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '11px', fontWeight: '800', letterSpacing: '0.08em', color: 'var(--text-main)', textTransform: 'uppercase' }}>
-                            Agent
-                          </div>
-                          <div style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)' }}>
-                            {filteredEmployees.length} Members
-                          </div>
-                        </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Users size={13} style={{ color: 'var(--accent-green)' }} />
+                        <span style={{ fontSize: '11px', fontWeight: '800', letterSpacing: '0.06em', color: 'var(--text-main)', textTransform: 'uppercase' }}>
+                          Agent
+                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)' }}>
+                          ({filteredEmployees.length})
+                        </span>
                       </div>
                     </th>
                     {activeDates.map((date, i) => {
@@ -1614,20 +1676,22 @@ function App() {
                           top: 0,
                           zIndex: 30,
                           backgroundColor: isToday ? 'var(--bg-card)' : 'var(--header-bg)',
-                          padding: '8px 4px', 
-                          borderBottom: isToday ? '2px solid var(--accent-green)' : isCustom ? '2px solid #2563eb' : '2px solid var(--border-color)',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                          padding: '2px 2px', 
+                          height: '36px',
+                          borderBottom: isToday ? '2px solid var(--accent-green)' : isCustom ? '2px solid #2563eb' : '1px solid var(--border-color)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
                           transition: 'all 0.2s'
                         }}>
                           <div style={{ 
                             display: 'flex', 
-                            flexDirection: 'column', 
                             alignItems: 'center', 
                             justifyContent: 'center',
-                            padding: '4px 2px',
-                            borderRadius: '8px',
-                            backgroundColor: isToday ? 'rgba(15, 118, 66, 0.08)' : isCustom ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
-                            border: isToday ? '1px solid rgba(15, 118, 66, 0.3)' : isCustom ? '1px solid rgba(37, 99, 235, 0.4)' : '1px solid transparent',
+                            gap: '4px',
+                            height: '28px',
+                            padding: '0 4px',
+                            borderRadius: '5px',
+                            backgroundColor: isToday ? 'rgba(15, 118, 66, 0.1)' : isCustom ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
+                            border: isToday ? '1px solid rgba(15, 118, 66, 0.25)' : isCustom ? '1px solid rgba(37, 99, 235, 0.3)' : 'none',
                             transition: 'all 0.2s'
                           }}>
                             <span style={{ 
@@ -1635,39 +1699,57 @@ function App() {
                               fontWeight: '800', 
                               color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)', 
                               textTransform: 'uppercase', 
-                              letterSpacing: '0.06em',
-                              marginBottom: '2px'
+                              letterSpacing: '0.04em'
                             }}>
                               {DAY_NAMES[i]}
                             </span>
                             
-                            <div style={{ 
-                              width: '28px', 
-                              height: '28px', 
-                              borderRadius: isToday || isCustom ? '50%' : '6px',
-                              backgroundColor: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'transparent',
-                              color: isToday || isCustom ? '#FFFFFF' : 'var(--text-main)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '14px', 
+                            <span style={{ 
+                              fontSize: '13px', 
                               fontWeight: '900',
-                              boxShadow: isToday ? '0 2px 6px rgba(15, 118, 66, 0.4)' : isCustom ? '0 2px 6px rgba(37, 99, 235, 0.4)' : 'none',
-                              transition: 'all 0.2s'
+                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-main)',
+                              lineHeight: 1
                             }}>
                               {date.split('-')[2]}
-                            </div>
-                            
-                            <span style={{ 
-                              fontSize: '9px', 
-                              fontWeight: '700', 
-                              color: isToday ? 'var(--accent-green)' : isCustom ? '#2563eb' : 'var(--text-muted)',
-                              marginTop: '2px',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em'
-                            }}>
-                              {isToday ? 'TODAY' : isCustom ? 'FILTER' : new Date(date).toLocaleString('default', { month: 'short' })}
                             </span>
+                            
+                            {isToday ? (
+                              <span style={{ 
+                                fontSize: '8px', 
+                                fontWeight: '900', 
+                                backgroundColor: 'var(--accent-green)', 
+                                color: '#FFFFFF',
+                                padding: '1px 3px',
+                                borderRadius: '3px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.03em',
+                                lineHeight: 1
+                              }}>
+                                TODAY
+                              </span>
+                            ) : isCustom ? (
+                              <span style={{ 
+                                fontSize: '8px', 
+                                fontWeight: '900', 
+                                backgroundColor: '#2563eb', 
+                                color: '#FFFFFF',
+                                padding: '1px 3px',
+                                borderRadius: '3px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.03em',
+                                lineHeight: 1
+                              }}>
+                                DATE
+                              </span>
+                            ) : (
+                              <span style={{ 
+                                fontSize: '9px', 
+                                fontWeight: '600', 
+                                color: 'var(--text-muted)'
+                              }}>
+                                {new Date(date).toLocaleString('default', { month: 'short' })}
+                              </span>
+                            )}
                           </div>
                         </th>
                       );
@@ -2248,90 +2330,302 @@ function App() {
 
       {/* Access Modal */}
       {showAccess && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: 'var(--bg-main)', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '500px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', color: 'var(--text-main)' }}>
-                <Shield size={20} /> Access Management
-              </h2>
-              <button onClick={() => setShowAccess(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
+          <div className="animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: 'var(--bg-main)', borderRadius: '16px', padding: '24px', width: '92%', maxWidth: '520px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.25)', border: '1px solid var(--border-color)' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: 'rgba(15, 118, 66, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-green)' }}>
+                  <Shield size={20} />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '0.01em' }}>
+                    Access Management
+                  </h2>
+                  <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: '500' }}>
+                    Manage roles and granular permissions
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowAccess(false)} 
+                style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--hover-bg)', border: '1px solid var(--border-color)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 'bold', transition: 'all 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-main)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+              >
+                ✕
+              </button>
             </div>
             
-            <form onSubmit={handleGrantAccess} style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
+            {/* Add User Bar */}
+            <form onSubmit={handleGrantAccess} style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
               <input 
                 type="email" 
-                placeholder="Agent email..." 
+                placeholder="Enter user email..." 
                 value={newAccessEmail}
                 onChange={(e) => setNewAccessEmail(e.target.value)}
                 required
-                style={{ flex: 1, padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
+                style={{ 
+                  flex: 1, 
+                  padding: '10px 14px', 
+                  borderRadius: '8px', 
+                  border: '1px solid var(--border-color)', 
+                  backgroundColor: 'var(--bg-card)', 
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  outline: 'none',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                }}
               />
-              <button type="submit" style={{ backgroundColor: 'var(--accent-green)', color: 'white', border: 'none', padding: '0 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add</button>
+              <button 
+                type="submit" 
+                style={{ 
+                  backgroundColor: 'var(--accent-green)', 
+                  color: 'white', 
+                  border: 'none', 
+                  padding: '0 18px', 
+                  borderRadius: '8px', 
+                  fontWeight: '700', 
+                  fontSize: '13px', 
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(15, 118, 66, 0.3)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Add User
+              </button>
             </form>
 
-            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '8px' }} className="custom-scrollbar">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* User List */}
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px' }} className="custom-scrollbar">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {authorizedUsers.length === 0 ? (
-                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>No users granted access yet.</div>
+                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px', fontSize: '13px' }}>
+                    No custom authorized users yet.
+                  </div>
                 ) : (
                   authorizedUsers.map(user => (
-                    <div key={user.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px 16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '8px' }}>
+                    <div 
+                      key={user.id} 
+                      style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: '12px', 
+                        padding: '14px 16px', 
+                        backgroundColor: 'var(--bg-card)', 
+                        border: '1px solid var(--border-color)', 
+                        borderRadius: '12px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      {/* User Row */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-main)' }}>{user.email}</div>
-                        <button onClick={() => handleRemoveAccess(user.id)} style={{ background: 'var(--accent-red, #ef4444)', border: 'none', color: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>Remove</button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ 
+                            width: '32px', 
+                            height: '32px', 
+                            borderRadius: '50%', 
+                            background: 'linear-gradient(135deg, #0F7642, #10b981)', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            color: '#fff', 
+                            fontSize: '12px', 
+                            fontWeight: '800' 
+                          }}>
+                            {user.email?.[0]?.toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
+                              {user.email}
+                            </div>
+                            <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--accent-green)', marginTop: '2px' }}>
+                              Authorized Access
+                            </div>
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={() => handleRemoveAccess(user.id)} 
+                          style={{ 
+                            background: 'rgba(239, 68, 68, 0.08)', 
+                            border: '1px solid rgba(239, 68, 68, 0.2)', 
+                            color: '#ef4444', 
+                            padding: '4px 10px', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '11px', 
+                            fontWeight: '700',
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.backgroundColor = '#ef4444';
+                            e.currentTarget.style.color = '#fff';
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.08)';
+                            e.currentTarget.style.color = '#ef4444';
+                          }}
+                        >
+                          Remove
+                        </button>
                       </div>
                       
+                      {/* Role Input */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', width: '50px' }}>Role:</span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', minWidth: '40px' }}>
+                          Role:
+                        </span>
                         <input 
                           type="text" 
                           value={user.role || ''} 
                           onChange={(e) => handleUpdateAccessRole(user.id, e.target.value)}
-                          style={{ flex: 1, padding: '4px 8px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
+                          placeholder="e.g. ⭐ Quality, 👑 Leader"
+                          style={{ 
+                            flex: 1, 
+                            padding: '6px 10px', 
+                            fontSize: '12px', 
+                            fontWeight: '600',
+                            borderRadius: '6px', 
+                            border: '1px solid var(--border-color)', 
+                            background: 'var(--input-bg)', 
+                            color: 'var(--text-main)',
+                            outline: 'none'
+                          }}
                         />
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-main)' }}>Edit Shifts</span>
-                        <div 
-                          onClick={() => handleUpdateAccessPermission(user.id, 'editShifts', !(user.permissions?.editShifts ?? true))}
-                          style={{ width: '36px', height: '20px', borderRadius: '10px', backgroundColor: (user.permissions?.editShifts ?? true) ? 'var(--accent-green)' : 'var(--border-color)', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}
-                        >
-                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '2px', left: (user.permissions?.editShifts ?? true) ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                      {/* Permissions Switches */}
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: '1fr 1fr', 
+                        gap: '10px', 
+                        backgroundColor: 'var(--hover-bg)', 
+                        padding: '10px 12px', 
+                        borderRadius: '8px' 
+                      }}>
+                        {/* Edit Shifts */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)' }}>Edit Shifts</div>
+                            <div style={{ fontSize: '9px', fontWeight: '600', color: (user.permissions?.editShifts ?? true) ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                              {(user.permissions?.editShifts ?? true) ? 'Allowed' : 'Locked'}
+                            </div>
+                          </div>
+                          <div 
+                            onClick={() => handleUpdateAccessPermission(user.id, 'editShifts', !(user.permissions?.editShifts ?? true))}
+                            style={{ 
+                              width: '36px', 
+                              height: '20px', 
+                              borderRadius: '10px', 
+                              backgroundColor: (user.permissions?.editShifts ?? true) ? 'var(--accent-green)' : '#cbd5e1', 
+                              position: 'relative', 
+                              cursor: 'pointer', 
+                              transition: 'background-color 0.2s' 
+                            }}
+                          >
+                            <div style={{ 
+                              width: '16px', 
+                              height: '16px', 
+                              borderRadius: '50%', 
+                              backgroundColor: 'white', 
+                              position: 'absolute', 
+                              top: '2px', 
+                              left: (user.permissions?.editShifts ?? true) ? '18px' : '2px', 
+                              transition: 'left 0.2s', 
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)' 
+                            }} />
+                          </div>
                         </div>
-                      </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-main)' }}>Edit Notes</span>
-                        <div 
-                          onClick={() => handleUpdateAccessPermission(user.id, 'editNotes', !(user.permissions?.editNotes ?? true))}
-                          style={{ width: '36px', height: '20px', borderRadius: '10px', backgroundColor: (user.permissions?.editNotes ?? true) ? 'var(--accent-green)' : 'var(--border-color)', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}
-                        >
-                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: 'white', position: 'absolute', top: '2px', left: (user.permissions?.editNotes ?? true) ? '18px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                        {/* Edit Notes */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)' }}>Edit Notes</div>
+                            <div style={{ fontSize: '9px', fontWeight: '600', color: (user.permissions?.editNotes ?? true) ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                              {(user.permissions?.editNotes ?? true) ? 'Allowed' : 'Locked'}
+                            </div>
+                          </div>
+                          <div 
+                            onClick={() => handleUpdateAccessPermission(user.id, 'editNotes', !(user.permissions?.editNotes ?? true))}
+                            style={{ 
+                              width: '36px', 
+                              height: '20px', 
+                              borderRadius: '10px', 
+                              backgroundColor: (user.permissions?.editNotes ?? true) ? 'var(--accent-green)' : '#cbd5e1', 
+                              position: 'relative', 
+                              cursor: 'pointer', 
+                              transition: 'background-color 0.2s' 
+                            }}
+                          >
+                            <div style={{ 
+                              width: '16px', 
+                              height: '16px', 
+                              borderRadius: '50%', 
+                              backgroundColor: 'white', 
+                              position: 'absolute', 
+                              top: '2px', 
+                              left: (user.permissions?.editNotes ?? true) ? '18px' : '2px', 
+                              transition: 'left 0.2s', 
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)' 
+                            }} />
+                          </div>
                         </div>
                       </div>
                     </div>
                   ))
                 )}
                 
-                {/* Visual rendering for hardcoded Fallbacks just so they know */}
-                {Object.keys(userRoles).map(email => {
-                  if (authorizedUsers.find(u => u.id === email)) return null; // skip if already in dynamic list
-                  return (
-                    <div key={email} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', opacity: 0.6, marginBottom: '8px' }}>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-main)' }}>{email}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Role: {userRoles[email]} (System Default)</div>
-                      </div>
-                      <button 
-                        onClick={() => handleGrantAccessForEmail(email)}
-                        style={{ background: 'var(--accent-green)', border: 'none', color: 'white', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                      >
-                        Customize Access
-                      </button>
+                {/* Visual rendering for hardcoded Fallbacks */}
+                {Object.keys(userRoles).some(email => !authorizedUsers.find(u => u.id === email)) && (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      System Default Leaders
                     </div>
-                  )
-                })}
+                    {Object.keys(userRoles).map(email => {
+                      if (authorizedUsers.find(u => u.id === email)) return null;
+                      return (
+                        <div 
+                          key={email} 
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'space-between', 
+                            padding: '10px 14px', 
+                            backgroundColor: 'var(--bg-card)', 
+                            border: '1px solid var(--border-color)', 
+                            borderRadius: '10px', 
+                            opacity: 0.75, 
+                            marginBottom: '6px' 
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>{email}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Role: {userRoles[email]} (Default)</div>
+                          </div>
+                          <button 
+                            onClick={() => handleGrantAccessForEmail(email)}
+                            style={{ 
+                              background: 'var(--accent-green)', 
+                              border: 'none', 
+                              color: 'white', 
+                              padding: '5px 10px', 
+                              borderRadius: '6px', 
+                              cursor: 'pointer', 
+                              fontSize: '11px', 
+                              fontWeight: '700',
+                              boxShadow: '0 1px 3px rgba(15,118,66,0.3)'
+                            }}
+                          >
+                            Customize Access
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
