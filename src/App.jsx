@@ -10,6 +10,22 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const YEARS = [2026, 2027, 2028, 2029, 2030]
 
+const isEnkiduLeader = (name) => {
+  const n = (name || '').toLowerCase();
+  return n.includes('ankido') || n.includes('ankidu') || n.includes('enkidu') || n.includes('انكيدو');
+};
+
+const isYounisLeader = (name) => {
+  const n = (name || '').toLowerCase();
+  if (n.includes('frmesk')) return false;
+  return n.startsWith('younis') || 
+         n.startsWith('yonis') || 
+         n.startsWith('يونس') || 
+         n.includes('younis kamal') || 
+         n.includes('yonis kamal') || 
+         n.includes('يونس كمال');
+};
+
 // Organization System Roster & Shift Mapping
 const SYSTEM_EMPLOYEES = [
   { empNo: 507, name: 'Mokhlad Midhat Ali', aliases: ['mokhalad ali', 'mokhlad ali', 'mokhalad', 'mokhlad'] },
@@ -644,7 +660,6 @@ function App() {
 
       const teamName = emp.teams?.name || teams.find(t => t.id === emp.team_id)?.name || 'No Team';
       const teamNameLower = teamName.toLowerCase();
-      const empNameLower = (emp.name || '').toLowerCase();
 
       const morningShifts = ['A', 'AC', 'AB', 'L'];
       const eveningShifts = ['B', 'BB', 'BC', 'LB'];
@@ -655,18 +670,22 @@ function App() {
       else if (eveningShifts.includes(code)) shiftType = 'evening';
       else if (nightShifts.includes(code)) shiftType = 'night';
 
-      // Check Team Leaders specifically (Enkidu = Morning, Younis = Evening)
-      if (teamNameLower.includes('leader') || empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو') || empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
-        if (empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو')) {
+      // Check Team Leaders specifically:
+      // Enkidu = Morning Team Leader
+      // Younis = Evening Team Leader
+      const isLeaderTeam = teamNameLower.includes('leader');
+      const isEnkidu = isEnkiduLeader(emp.name);
+      const isYounis = isYounisLeader(emp.name);
+
+      if (isLeaderTeam || isEnkidu || isYounis) {
+        if (isEnkidu) {
           leaderM++;
-        } else if (empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
+        } else if (isYounis) {
           leaderE++;
-        } else if (shiftType === 'morning') {
-          leaderM++;
-        } else if (shiftType === 'evening') {
-          leaderE++;
-        } else {
-          if (code.startsWith('A') || code === 'L') leaderM++;
+        } else if (isLeaderTeam) {
+          if (shiftType === 'morning') leaderM++;
+          else if (shiftType === 'evening') leaderE++;
+          else if (code.startsWith('A') || code === 'L') leaderM++;
           else leaderE++;
         }
         return;
@@ -1383,7 +1402,6 @@ function App() {
         const sched = docSnap.data();
         const originalTeamName = empTeamMap[sched.employee_id] || 'No Team';
         const teamNameLower = originalTeamName.toLowerCase();
-        const empNameLower = (empNameMap[sched.employee_id] || '').toLowerCase();
         
         const code = (sched.shift_code || '').toUpperCase();
         if (['OFF','OUT','V','H','M','S','EMERGENCY', ''].includes(code)) return;
@@ -1397,18 +1415,23 @@ function App() {
         else if (eveningShifts.includes(code)) shiftType = 'evening';
         else if (nightShifts.includes(code)) shiftType = 'night';
 
-        // Check Team Leaders specifically (Enkidu = Morning, Younis = Evening)
-        if (teamNameLower.includes('leader') || empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو') || empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
-          if (empNameLower.includes('ankido') || empNameLower.includes('enkidu') || empNameLower.includes('انكيدو')) {
+        // Check Team Leaders specifically:
+        // Enkidu = Morning Team Leader
+        // Younis = Evening Team Leader
+        const empName = empNameMap[sched.employee_id] || '';
+        const isLeaderTeam = teamNameLower.includes('leader');
+        const isEnkidu = isEnkiduLeader(empName);
+        const isYounis = isYounisLeader(empName);
+
+        if (isLeaderTeam || isEnkidu || isYounis) {
+          if (isEnkidu) {
             leaderM++;
-          } else if (empNameLower.includes('yonis') || empNameLower.includes('younis') || empNameLower.includes('يونس')) {
+          } else if (isYounis) {
             leaderE++;
-          } else if (shiftType === 'morning') {
-            leaderM++;
-          } else if (shiftType === 'evening') {
-            leaderE++;
-          } else {
-            if (code.startsWith('A') || code === 'L') leaderM++;
+          } else if (isLeaderTeam) {
+            if (shiftType === 'morning') leaderM++;
+            else if (shiftType === 'evening') leaderE++;
+            else if (code.startsWith('A') || code === 'L') leaderM++;
             else leaderE++;
           }
           return;
