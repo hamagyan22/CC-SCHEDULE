@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { db, auth } from './firebase'
 import { collection, getDocs, doc, setDoc, deleteDoc, addDoc, updateDoc, query, where, writeBatch, onSnapshot, orderBy, limit } from "firebase/firestore";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote, Award, Shield, GraduationCap, Headset, Folder, Cloud, Database, Download, Check, UploadCloud, RefreshCw, FileSpreadsheet, ExternalLink, Camera, Mail, Lock, User, Copy, Clipboard } from 'lucide-react'
+import { Calendar, Settings, Users, Plus, Briefcase, Clock, Moon, Sun, Search, LogOut, PhoneCall, MessageSquare, Trash2, Edit2, StickyNote, Award, Shield, GraduationCap, Headset, Folder, Cloud, Database, Download, Check, UploadCloud, RefreshCw, FileSpreadsheet, ExternalLink, Camera, Mail, Lock, User } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -449,9 +449,10 @@ function App() {
   const [exportRangeEnd, setExportRangeEnd] = useState('')
   const [exportingSystemFile, setExportingSystemFile] = useState(false)
   const [selectedStatsDate, setSelectedStatsDate] = useState('')
-  const [selectedRowEmpId, setSelectedRowEmpId] = useState(null)
+  const [selectionRange, setSelectionRange] = useState(null) // { empId, startCol, endCol }
   const [copiedRowData, setCopiedRowData] = useState(null)
-  const [rowCopiedAnimationEmpId, setRowCopiedAnimationEmpId] = useState(null)
+  const dragStartRef = useRef(null)
+  const isDraggingRef = useRef(false)
 
   const getTodayStr = () => {
     const d = new Date();
@@ -1618,11 +1619,23 @@ function App() {
     }
   }
 
-  const handleCopyRow = async (emp) => {
-    if (!emp) return;
-    const rowShifts = activeDates.map(date => schedules[emp.id]?.[date] || '');
-    const tabSeparated = rowShifts.join('\t');
-    
+  const handleCellMouseDown = (e, empId, dayIdx) => {
+    if (e.button !== 0) return; // Only left click
+    dragStartRef.current = { empId, colIdx: dayIdx, clientX: e.clientX, clientY: e.clientY };
+    isDraggingRef.current = false;
+  };
+
+  const copySelectionToClipboard = async () => {
+    if (!selectionRange) return;
+    const { empId, startCol, endCol } = selectionRange;
+    const emp = employees.find(e => e.id === empId);
+    const selectedShifts = [];
+    for (let i = startCol; i <= endCol; i++) {
+      const d = activeDates[i];
+      selectedShifts.push(schedules[empId]?.[d] || '');
+    }
+    const tabSeparated = selectedShifts.join('\t');
+
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(tabSeparated);
@@ -1639,109 +1652,15 @@ function App() {
     } catch (e) {
       console.warn('Clipboard write error:', e);
     }
-    
+
     setCopiedRowData({
-      empId: emp.id,
-      empName: emp.name,
-      shifts: rowShifts,
-      dates: [...activeDates]
-    });
-    
-    setSelectedRowEmpId(emp.id);
-    setRowCopiedAnimationEmpId(emp.id);
-    setTimeout(() => setRowCopiedAnimationEmpId(null), 1200);
-    
-    const summary = rowShifts.map(s => s || '-').join(' | ');
-    showToast(`✓ Copied ${emp.name}'s row: [ ${summary} ]`, "success");
-  };
-
-  const handlePasteRow = async (targetEmpId, customPastedText = null) => {
-    if (!canEditShifts()) {
-      showToast("❌ You do not have permission to edit shifts.");
-      return;
-    }
-    const targetEmp = employees.find(e => e.id === targetEmpId);
-    if (!targetEmp) return;
-
-    let tokens = null;
-    if (customPastedText) {
-      tokens = customPastedText.split(/[\t\n,]+/).map(t => t.trim().toUpperCase());
-    } else {
-      try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          const clipText = await navigator.clipboard.readText();
-          if (clipText && (clipText.includes('\t') || clipText.includes('\n') || clipText.includes(',') || clipText.includes(' '))) {
-            const raw = clipText.trim().split(/[\t\n, ]+/).map(t => t.trim().toUpperCase());
-            if (raw.length > 0) tokens = raw;
-          }
-        }
-      } catch (e) {
-        console.warn('Clipboard read error:', e);
-      }
-      if (!tokens && copiedRowData?.shifts) {
-        tokens = copiedRowData.shifts.map(s => (s || '').toUpperCase().trim());
-      }
-    }
-
-    if (!tokens || tokens.length === 0) {
-      showToast("⚠️ No schedule row copied yet. Select a row and click Copy first!", "warning");
-      return;
-    }
-
-    const validShiftCodes = new Set(shiftTypes.map(s => s.code.toUpperCase()));
-    validShiftCodes.add('');
-    validShiftCodes.add('-');
-
-    const newSchedulesForEmp = { ...(schedules[targetEmpId] || {}) };
-    const batch = writeBatch(db);
-    let changedCount = 0;
-
-    activeDates.forEach((date, idx) => {
-      if (idx < tokens.length) {
-        let code = (tokens[idx] || '').toUpperCase().trim();
-        if (code === '-') code = '';
-        if (code && !validShiftCodes.has(code)) return;
-
-        const oldCode = schedules[targetEmpId]?.[date] || '';
-        if (oldCode !== code) {
-          newSchedulesForEmp[date] = code;
-          changedCount++;
-          const docId = `${targetEmpId}_${date}`;
-          if (!code) {
-            batch.delete(doc(db, "schedules", docId));
-          } else {
-            batch.set(doc(db, "schedules", docId), {
-              employee_id: targetEmpId,
-              shift_code: code,
-              work_date: date
-            });
-          }
-          const logRef = doc(collection(db, "history_logs"));
-          batch.set(logRef, {
-            type: 'shift',
-            user: currentUser?.email || 'Unknown',
-            employee: targetEmp.name,
-            work_date: date,
-            old_value: oldCode,
-            new_value: code,
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
+      empId,
+      empName: emp?.name || 'Agent',
+      shifts: selectedShifts
     });
 
-    if (changedCount > 0) {
-      setSchedules(prev => ({
-        ...prev,
-        [targetEmpId]: newSchedulesForEmp
-      }));
-      await batch.commit();
-      setRowCopiedAnimationEmpId(targetEmpId);
-      setTimeout(() => setRowCopiedAnimationEmpId(null), 1200);
-      showToast(`✓ Pasted schedule into ${targetEmp.name}'s row!`, "success");
-    } else {
-      showToast(`Schedule already identical for ${targetEmp.name}.`, "info");
-    }
+    const summary = selectedShifts.map(s => s || '-').join(' ');
+    showToast(`✓ Copied ${selectedShifts.length} shift(s): [ ${summary} ]`, "success");
   };
 
   const handlePasteRowStartingAt = async (targetEmpId, startDayIdx, tokens) => {
@@ -1802,47 +1721,164 @@ function App() {
         [targetEmpId]: newSchedulesForEmp
       }));
       await batch.commit();
-      setRowCopiedAnimationEmpId(targetEmpId);
-      setTimeout(() => setRowCopiedAnimationEmpId(null), 1200);
-      showToast(`✓ Pasted ${changedCount} shift(s) to ${targetEmp.name}!`, "success");
+      showToast(`✓ Pasted ${changedCount} shift(s) into ${targetEmp.name}!`, "success");
+    }
+  };
+
+  const handlePasteIntoSelection = async () => {
+    if (!selectionRange) return;
+    if (!canEditShifts()) {
+      showToast("❌ You do not have permission to edit shifts.");
+      return;
+    }
+    try {
+      let tokens = null;
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const clipText = await navigator.clipboard.readText();
+        if (clipText) {
+          tokens = clipText.trim().split(/[\t\n, ]+/).map(t => t.trim().toUpperCase()).filter(Boolean);
+        }
+      }
+      if ((!tokens || tokens.length === 0) && copiedRowData?.shifts) {
+        tokens = copiedRowData.shifts;
+      }
+      if (tokens && tokens.length > 0) {
+        await handlePasteRowStartingAt(selectionRange.empId, selectionRange.startCol, tokens);
+      }
+    } catch (e) {
+      console.warn('Paste error:', e);
     }
   };
 
   useEffect(() => {
+    const handleWindowMouseMove = (e) => {
+      if (!dragStartRef.current || e.buttons !== 1) return;
+
+      const dx = Math.abs(e.clientX - dragStartRef.current.clientX);
+      const dy = Math.abs(e.clientY - dragStartRef.current.clientY);
+
+      if (dx < 6 && dy < 6 && !isDraggingRef.current) return;
+
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const cellEl = el?.closest('[data-shift-cell="true"]');
+
+      if (cellEl) {
+        const cellEmpId = cellEl.getAttribute('data-cell-emp-id');
+        const targetColIdx = parseInt(cellEl.getAttribute('data-cell-day-idx'), 10);
+
+        if (cellEmpId === dragStartRef.current.empId) {
+          isDraggingRef.current = true;
+          window.getSelection()?.removeAllRanges();
+          const start = Math.min(dragStartRef.current.colIdx, targetColIdx);
+          const end = Math.max(dragStartRef.current.colIdx, targetColIdx);
+          setSelectionRange({ empId: cellEmpId, startCol: start, endCol: end });
+        }
+      } else {
+        const rowEl = el?.closest('tr[data-row-emp-id]');
+        if (rowEl && rowEl.getAttribute('data-row-emp-id') === dragStartRef.current.empId) {
+          const cells = rowEl.querySelectorAll('[data-shift-cell="true"]');
+          if (cells.length > 0) {
+            const lastRect = cells[cells.length - 1].getBoundingClientRect();
+            if (e.clientX >= lastRect.left) {
+              isDraggingRef.current = true;
+              window.getSelection()?.removeAllRanges();
+              setSelectionRange({
+                empId: dragStartRef.current.empId,
+                startCol: Math.min(dragStartRef.current.colIdx, cells.length - 1),
+                endCol: cells.length - 1
+              });
+            }
+          }
+        }
+      }
+    };
+
+    const handleWindowMouseUp = (e) => {
+      if (dragStartRef.current) {
+        if (!isDraggingRef.current && selectionRange) {
+          const el = document.elementFromPoint(e.clientX, e.clientY);
+          const cellEl = el?.closest('[data-shift-cell="true"]');
+          const empColEl = el?.closest('.employee-col');
+          if (!cellEl && !empColEl) {
+            setSelectionRange(null);
+          }
+        }
+        dragStartRef.current = null;
+        isDraggingRef.current = false;
+      }
+    };
+
     const handleGlobalKeyDown = (e) => {
       const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
 
       // Ctrl+C or Cmd+C
       if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
-        if (selectedRowEmpId) {
-          if (isInput && window.getSelection() && window.getSelection().toString().length > 0) {
+        if (selectionRange) {
+          if (isInput && selectionRange.startCol === selectionRange.endCol && window.getSelection()?.toString().length > 0) {
             return;
           }
-          const emp = employees.find(em => em.id === selectedRowEmpId);
-          if (emp) {
-            e.preventDefault();
-            handleCopyRow(emp);
-          }
+          e.preventDefault();
+          copySelectionToClipboard();
         }
       }
 
       // Ctrl+V or Cmd+V
       if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
-        if (selectedRowEmpId && !isInput) {
+        if (selectionRange && !isInput) {
           e.preventDefault();
-          handlePasteRow(selectedRowEmpId);
+          handlePasteIntoSelection();
         }
       }
 
-      // Escape to deselect row
-      if (e.key === 'Escape' && selectedRowEmpId) {
-        setSelectedRowEmpId(null);
+      // Escape to deselect
+      if (e.key === 'Escape' && selectionRange) {
+        setSelectionRange(null);
       }
     };
 
+    const handleWindowCopy = (e) => {
+      if (!selectionRange) return;
+      const isInput = document.activeElement?.tagName === 'INPUT';
+      if (isInput && selectionRange.startCol === selectionRange.endCol && window.getSelection()?.toString().length > 0) {
+        return;
+      }
+      const { empId, startCol, endCol } = selectionRange;
+      const selectedShifts = [];
+      for (let i = startCol; i <= endCol; i++) {
+        const d = activeDates[i];
+        selectedShifts.push(schedules[empId]?.[d] || '');
+      }
+      const tabSeparated = selectedShifts.join('\t');
+      if (e.clipboardData) {
+        e.clipboardData.setData('text/plain', tabSeparated);
+        e.preventDefault();
+        const summary = selectedShifts.map(s => s || '-').join(' ');
+        showToast(`✓ Copied ${selectedShifts.length} shift(s): [ ${summary} ]`, "success");
+      }
+    };
+
+    const handleDocumentMouseDown = (e) => {
+      if (!selectionRange) return;
+      const el = e.target;
+      if (!el.closest('[data-shift-cell="true"]') && !el.closest('.employee-col')) {
+        setSelectionRange(null);
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
     window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [selectedRowEmpId, employees, schedules, activeDates, copiedRowData, handleCopyRow, handlePasteRow]);
+    window.addEventListener('copy', handleWindowCopy);
+    document.addEventListener('mousedown', handleDocumentMouseDown);
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('copy', handleWindowCopy);
+      document.removeEventListener('mousedown', handleDocumentMouseDown);
+    };
+  }, [selectionRange, activeDates, schedules, employees, copiedRowData]);
 
   async function handleNoteSave(employeeId, date, note) {
     if (!canEditNotes()) {
@@ -3245,174 +3281,78 @@ function App() {
                     
                     {/* Employees */}
                     {group.employees.map(emp => {
-                      const isRowSelected = selectedRowEmpId === emp.id;
-                      const isRowFlashing = rowCopiedAnimationEmpId === emp.id;
                       return (
-                        <tr 
-                          key={emp.id}
-                          style={{
-                            backgroundColor: isRowFlashing 
-                              ? (isDark ? 'rgba(16, 185, 129, 0.22)' : '#d1fae5') 
-                              : isRowSelected 
-                              ? (isDark ? 'rgba(16, 185, 129, 0.1)' : '#ecfdf5') 
-                              : undefined,
-                            transition: 'background-color 0.2s ease'
-                          }}
-                        >
+                        <tr key={emp.id} data-row-emp-id={emp.id}>
                           <td 
                             className="employee-col"
-                            onClick={() => setSelectedRowEmpId(isRowSelected ? null : emp.id)}
-                            style={{ 
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              borderLeft: isRowSelected ? '4px solid var(--accent-green)' : '4px solid transparent',
-                              backgroundColor: isRowFlashing
-                                ? (isDark ? '#144d2e' : '#c6f6d5')
-                                : isRowSelected 
-                                ? (isDark ? '#0f3822' : '#e6f7ed') 
-                                : undefined,
-                              transition: 'all 0.15s ease'
+                            onClick={() => {
+                              if (selectionRange && selectionRange.empId === emp.id && selectionRange.startCol === 0 && selectionRange.endCol === activeDates.length - 1) {
+                                setSelectionRange(null);
+                              } else {
+                                setSelectionRange({ empId: emp.id, startCol: 0, endCol: activeDates.length - 1 });
+                              }
                             }}
-                            title="Click to select entire row (Ctrl+C to copy, Ctrl+V to paste)"
+                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                            title="Click to select row in blue (Ctrl+C to copy)"
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                <span style={{
-                                  width: '16px',
-                                  height: '16px',
-                                  borderRadius: '4px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '10px',
-                                  fontWeight: '800',
-                                  border: isRowSelected ? 'none' : '1px solid var(--border-color)',
-                                  backgroundColor: isRowSelected ? 'var(--accent-green)' : 'transparent',
-                                  color: isRowSelected ? '#FFFFFF' : 'var(--text-muted)',
-                                  flexShrink: 0
-                                }}>
-                                  {isRowSelected ? '✓' : ''}
-                                </span>
-                                <span style={{ 
-                                  fontWeight: isRowSelected ? '800' : '600',
-                                  color: isRowSelected ? 'var(--accent-green)' : 'var(--text-main)',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  {emp.name}
-                                </span>
-                              </div>
-
-                              {/* Row Copy & Paste Action Buttons */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleCopyRow(emp);
-                                  }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    padding: '3px 7px',
-                                    borderRadius: '4px',
-                                    fontSize: '10px',
-                                    fontWeight: '700',
-                                    cursor: 'pointer',
-                                    border: isRowSelected ? 'none' : '1px solid var(--border-color)',
-                                    backgroundColor: isRowSelected ? 'var(--accent-green)' : 'var(--bg-card)',
-                                    color: isRowSelected ? '#FFFFFF' : 'var(--text-main)',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                                    transition: 'all 0.15s'
-                                  }}
-                                  title="Copy entire row schedule (Ctrl+C)"
-                                >
-                                  <Copy size={11} />
-                                  <span>Copy</span>
-                                </button>
-
-                                {copiedRowData && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handlePasteRow(emp.id);
-                                    }}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '3px',
-                                      padding: '3px 7px',
-                                      borderRadius: '4px',
-                                      fontSize: '10px',
-                                      fontWeight: '700',
-                                      cursor: 'pointer',
-                                      border: '1px solid #107c41',
-                                      backgroundColor: isDark ? 'rgba(16, 124, 65, 0.25)' : '#edf7ee',
-                                      color: '#107c41',
-                                      transition: 'all 0.15s'
-                                    }}
-                                    title={`Paste copied row (${copiedRowData.empName}) into ${emp.name} (Ctrl+V)`}
-                                  >
-                                    <Clipboard size={11} />
-                                    <span>Paste</span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
+                            <div>{emp.name}</div>
                           </td>
                           {activeDates.map((date, dayIdx) => {
                             const shift = schedules[emp.id]?.[date] || ''
                             const prevDate = prevWeekDates[dayIdx]
                             const prevShift = prevDate ? (schedules[emp.id]?.[prevDate] || '') : ''
                             const prevClass = prevShift ? getShiftClass(prevShift) : ''
+                            const isCellSelected = selectionRange && 
+                              selectionRange.empId === emp.id && 
+                              dayIdx >= selectionRange.startCol && 
+                              dayIdx <= selectionRange.endCol;
+
                             return (
                               <td 
                                 key={date} 
+                                data-shift-cell="true"
+                                data-cell-emp-id={emp.id}
+                                data-cell-day-idx={dayIdx}
+                                onMouseDown={(e) => handleCellMouseDown(e, emp.id, dayIdx)}
                                 style={{ 
                                   padding: '3px', 
                                   verticalAlign: 'middle',
-                                  backgroundColor: isRowFlashing 
-                                    ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5') 
-                                    : isRowSelected 
-                                    ? (isDark ? 'rgba(16, 185, 129, 0.08)' : '#edf7ee') 
-                                    : undefined,
-                                  transition: 'background-color 0.2s ease'
+                                  userSelect: isCellSelected ? 'none' : undefined
                                 }}
                               >
-                                <div style={{ 
-                                  position: 'relative', 
-                                  display: 'flex', 
-                                  flexDirection: 'column', 
-                                  borderRadius: '6px', 
-                                  overflow: 'hidden', 
-                                  border: isRowFlashing 
-                                    ? '2px solid #107c41' 
-                                    : isRowSelected 
-                                    ? '1.5px solid var(--accent-green)' 
-                                    : '1px solid var(--input-border)', 
-                                  backgroundColor: 'var(--input-bg)',
-                                  boxShadow: isRowSelected ? '0 0 0 1px rgba(16, 185, 129, 0.25)' : undefined,
-                                  transition: 'all 0.15s ease'
-                                }}>
+                                <div 
+                                  data-shift-cell="true"
+                                  data-cell-emp-id={emp.id}
+                                  data-cell-day-idx={dayIdx}
+                                  style={{ 
+                                    position: 'relative', 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    borderRadius: '6px', 
+                                    overflow: 'hidden', 
+                                    border: isCellSelected ? '1px solid #1d4ed8' : '1px solid var(--input-border)', 
+                                    backgroundColor: isCellSelected ? '#2563eb' : 'var(--input-bg)',
+                                    boxShadow: isCellSelected ? '0 0 0 1px #2563eb' : undefined,
+                                    transition: 'background-color 0.1s ease, border-color 0.1s ease'
+                                  }}
+                                >
                                   {/* Current week shift input */}
                                   <input
                                     type="text"
-                                    className={`excel-input ${getShiftClass(shift)}`}
+                                    className={`excel-input ${isCellSelected ? '' : getShiftClass(shift)}`}
                                     defaultValue={shift}
                                     placeholder="-"
+                                    onDragStart={(e) => e.preventDefault()}
                                     style={{ 
                                       border: 'none', 
                                       borderRadius: '0', 
                                       height: '26px', 
-                                      fontSize: '12px',
-                                      fontWeight: '700',
-                                      borderBottom: prevShift ? '1px solid var(--border-color)' : 'none'
-                                    }}
-                                    onFocus={() => {
-                                      setSelectedRowEmpId(emp.id);
+                                      fontSize: '12px', 
+                                      fontWeight: isCellSelected ? '800' : '700',
+                                      backgroundColor: isCellSelected ? '#2563eb' : undefined,
+                                      color: isCellSelected ? '#ffffff' : undefined,
+                                      borderBottom: prevShift ? (isCellSelected ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--border-color)') : 'none',
+                                      userSelect: isCellSelected ? 'none' : undefined
                                     }}
                                     onBlur={(e) => handleShiftChange(emp.id, date, e.target.value)}
                                     onPaste={(e) => {
@@ -3428,7 +3368,7 @@ function App() {
                                     onKeyDown={(e) => {
                                       if (e.shiftKey && e.code === 'Space') {
                                         e.preventDefault();
-                                        setSelectedRowEmpId(emp.id);
+                                        setSelectionRange({ empId: emp.id, startCol: 0, endCol: activeDates.length - 1 });
                                         return;
                                       }
                                       const allowedKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
@@ -3479,9 +3419,9 @@ function App() {
                                       fontSize: '9px',
                                       fontWeight: '600',
                                       padding: '2px 0',
-                                      color: prevClass ? undefined : 'var(--text-muted)',
-                                      backgroundColor: prevClass ? undefined : 'var(--header-bg)',
-                                      opacity: 0.75,
+                                      color: isCellSelected ? 'rgba(255, 255, 255, 0.9)' : (prevClass ? undefined : 'var(--text-muted)'),
+                                      backgroundColor: isCellSelected ? 'rgba(0, 0, 0, 0.25)' : (prevClass ? undefined : 'var(--header-bg)'),
+                                      opacity: isCellSelected ? 1 : 0.75,
                                       letterSpacing: '0.03em'
                                     }}>
                                       {prevShift}
@@ -3593,106 +3533,6 @@ function App() {
           </div>
         )}
 
-        {/* Floating Row Selection Action Bar */}
-        {selectedRowEmpId && (
-          <div style={{
-            position: 'fixed',
-            bottom: '24px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 90,
-            backgroundColor: 'var(--bg-card)',
-            border: '1.5px solid var(--accent-green)',
-            borderRadius: '40px',
-            padding: '8px 18px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            boxShadow: '0 12px 30px -4px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(16, 124, 65, 0.25)',
-            animation: 'fadeIn 0.15s ease-out'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: '800', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)' }} />
-              <span>Row Selected: <span style={{ color: 'var(--accent-green)' }}>{employees.find(e => e.id === selectedRowEmpId)?.name || 'Agent'}</span> (7 days)</span>
-            </div>
-
-            <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--border-color)' }} />
-
-            <button
-              type="button"
-              onClick={() => {
-                const emp = employees.find(e => e.id === selectedRowEmpId);
-                if (emp) handleCopyRow(emp);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '20px',
-                border: 'none',
-                backgroundColor: 'var(--accent-green)',
-                color: '#FFFFFF',
-                fontSize: '12px',
-                fontWeight: '800',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(16, 124, 65, 0.3)',
-                transition: 'all 0.15s'
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0d6334'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--accent-green)'}
-              title="Copy full row shifts to clipboard (Ctrl+C)"
-            >
-              <Copy size={13} />
-              <span>Copy Row (Ctrl+C)</span>
-            </button>
-
-            {copiedRowData && (
-              <button
-                type="button"
-                onClick={() => handlePasteRow(selectedRowEmpId)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  border: '1px solid #107c41',
-                  backgroundColor: isDark ? 'rgba(16, 124, 65, 0.2)' : '#edf7ee',
-                  color: '#107c41',
-                  fontSize: '12px',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = isDark ? 'rgba(16, 124, 65, 0.35)' : '#dcfce7'}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = isDark ? 'rgba(16, 124, 65, 0.2)' : '#edf7ee'}
-                title={`Paste copied shifts (${copiedRowData.empName}) into this employee (Ctrl+V)`}
-              >
-                <Clipboard size={13} />
-                <span>Paste ({copiedRowData.empName})</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setSelectedRowEmpId(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '14px',
-                padding: '2px 6px',
-                borderRadius: '50%',
-                fontWeight: '700'
-              }}
-              title="Deselect row (Esc)"
-            >
-              ✕
-            </button>
-          </div>
-        )}
 
         {/* MANAGE TAB */}
         {currentTab === 'manage' && (
