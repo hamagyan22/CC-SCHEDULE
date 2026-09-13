@@ -562,6 +562,22 @@ function App() {
     return getDatesBetween(exportRangeStart, exportRangeEnd);
   }, [exportRangeStart, exportRangeEnd]);
 
+  const activeDates = useMemo(() => {
+    return (activeCustomDates && activeCustomDates.length > 0) 
+      ? activeCustomDates 
+      : (WEEKS[currentWeekIndex]?.dates || []);
+  }, [activeCustomDates, currentWeekIndex, WEEKS]);
+
+  const activeMonthIndex = useMemo(() => {
+    return (activeCustomDates && activeCustomDates.length > 0)
+      ? new Date(activeCustomDates[0] + 'T00:00:00').getMonth()
+      : (WEEKS[currentWeekIndex]?.monthIndex ?? 0);
+  }, [activeCustomDates, currentWeekIndex, WEEKS]);
+
+  const prevWeekDates = useMemo(() => {
+    return currentWeekIndex > 0 ? (WEEKS[currentWeekIndex - 1]?.dates || []) : [];
+  }, [currentWeekIndex, WEEKS]);
+
 
   const [employees, setEmployees] = useState([])
   const [schedules, setSchedules] = useState({})
@@ -2031,13 +2047,6 @@ function App() {
     </div>
   )
 
-  const activeDates = (activeCustomDates && activeCustomDates.length > 0) 
-    ? activeCustomDates 
-    : WEEKS[currentWeekIndex].dates;
-  const activeMonthIndex = (activeCustomDates && activeCustomDates.length > 0)
-    ? new Date(activeCustomDates[0] + 'T00:00:00').getMonth()
-    : WEEKS[currentWeekIndex].monthIndex;
-  const prevWeekDates = currentWeekIndex > 0 ? WEEKS[currentWeekIndex - 1].dates : [];
 
   const filteredEmployees = employees.filter(emp => {
     if (selectedTeamFilter === 'ALL') {
