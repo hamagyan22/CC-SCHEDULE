@@ -460,6 +460,77 @@ function calculateShiftDuration(startStr, endStr) {
   return `${hours}h ${mins}m`;
 }
 
+function getShiftBadgeStyle(code, hasTime, isDark) {
+  const c = (code || '').toUpperCase().trim();
+  if (hasTime) {
+    return {
+      bg: isDark ? 'rgba(37, 99, 235, 0.16)' : '#eff6ff',
+      color: isDark ? '#60a5fa' : '#2563eb',
+      border: isDark ? 'rgba(59, 130, 246, 0.35)' : '#bfdbfe'
+    };
+  }
+  if (c === 'OFF') {
+    return {
+      bg: isDark ? 'rgba(148, 163, 184, 0.12)' : '#f1f5f9',
+      color: isDark ? '#94a3b8' : '#475569',
+      border: isDark ? 'rgba(148, 163, 184, 0.25)' : '#cbd5e1'
+    };
+  }
+  if (c === 'V') {
+    return {
+      bg: isDark ? 'rgba(245, 158, 11, 0.14)' : '#fef3c7',
+      color: isDark ? '#fbbf24' : '#d97706',
+      border: isDark ? 'rgba(245, 158, 11, 0.35)' : '#fde68a'
+    };
+  }
+  if (c === 'H') {
+    return {
+      bg: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ecfdf5',
+      color: isDark ? '#34d399' : '#059669',
+      border: isDark ? 'rgba(16, 185, 129, 0.35)' : '#a7f3d0'
+    };
+  }
+  if (c === 'EMERGENCY') {
+    return {
+      bg: isDark ? 'rgba(239, 68, 68, 0.14)' : '#fef2f2',
+      color: isDark ? '#f87171' : '#dc2626',
+      border: isDark ? 'rgba(239, 68, 68, 0.35)' : '#fecaca'
+    };
+  }
+  if (c === 'S') {
+    return {
+      bg: isDark ? 'rgba(168, 85, 247, 0.14)' : '#faf5ff',
+      color: isDark ? '#c084fc' : '#7e22ce',
+      border: isDark ? 'rgba(168, 85, 247, 0.35)' : '#e9d5ff'
+    };
+  }
+  if (c === 'M') {
+    return {
+      bg: isDark ? 'rgba(236, 72, 153, 0.14)' : '#fdf2f8',
+      color: isDark ? '#f472b6' : '#db2777',
+      border: isDark ? 'rgba(236, 72, 153, 0.35)' : '#fbcfe8'
+    };
+  }
+  return {
+    bg: isDark ? 'rgba(100, 116, 139, 0.12)' : '#f8fafc',
+    color: isDark ? '#cbd5e1' : '#64748b',
+    border: isDark ? 'rgba(100, 116, 139, 0.25)' : '#e2e8f0'
+  };
+}
+
+function getShiftTitle(code, description) {
+  if (description) return description;
+  const c = (code || '').toUpperCase().trim();
+  if (c === 'OFF') return 'Scheduled Day Off';
+  if (c === 'V') return 'Annual Vacation';
+  if (c === 'H') return 'Official Public Holiday';
+  if (c === 'S') return 'Sick Leave';
+  if (c === 'M') return 'Maternity Leave';
+  if (c === 'EMERGENCY') return 'Emergency Coverage / Standby';
+  if (c === 'OUT') return 'Out of Office';
+  return 'Flexible / Non-standard Schedule';
+}
+
 function App() {
   const [currentTab, setCurrentTab] = useState('schedule') 
   const [isDark, setIsDark] = useState(false)
@@ -489,6 +560,7 @@ function App() {
   const [exportingSystemFile, setExportingSystemFile] = useState(false)
   const [showShiftsModal, setShowShiftsModal] = useState(false)
   const [shiftSearchQuery, setShiftSearchQuery] = useState('')
+  const [shiftCategoryFilter, setShiftCategoryFilter] = useState('all') // 'all' | 'working' | 'leave'
   const [selectedStatsDate, setSelectedStatsDate] = useState('')
   const [selectionRange, setSelectionRange] = useState(null) // { empId, startCol, endCol }
   const [copiedRowData, setCopiedRowData] = useState(null)
@@ -628,6 +700,11 @@ function App() {
   
   const sortedAndFilteredShifts = useMemo(() => {
     let list = [...shiftTypes];
+    if (shiftCategoryFilter === 'working') {
+      list = list.filter(s => !!(s.start_time || s.end_time));
+    } else if (shiftCategoryFilter === 'leave') {
+      list = list.filter(s => !(s.start_time || s.end_time));
+    }
     if (shiftSearchQuery.trim()) {
       const q = shiftSearchQuery.toLowerCase().trim();
       list = list.filter(s => 
@@ -636,7 +713,8 @@ function App() {
         (s.end_time && s.end_time.toLowerCase().includes(q)) ||
         (formatTime(s.start_time).toLowerCase().includes(q)) ||
         (formatTime(s.end_time).toLowerCase().includes(q)) ||
-        (s.description && s.description.toLowerCase().includes(q))
+        (s.description && s.description.toLowerCase().includes(q)) ||
+        (getShiftTitle(s.code, s.description).toLowerCase().includes(q))
       );
     }
     return list.sort((a, b) => {
@@ -652,7 +730,7 @@ function App() {
       }
       return (a.code || '').localeCompare(b.code || '');
     });
-  }, [shiftTypes, shiftSearchQuery]);
+  }, [shiftTypes, shiftSearchQuery, shiftCategoryFilter]);
   
   const [initialLoading, setInitialLoading] = useState(true)
   const [editingTeam, setEditingTeam] = useState(null)
@@ -2640,6 +2718,7 @@ function App() {
           <button 
             onClick={() => {
               setShiftSearchQuery('');
+              setShiftCategoryFilter('all');
               setShowShiftsModal(true);
             }}
             style={{ 
@@ -5284,7 +5363,7 @@ function App() {
         </div>
       )}
 
-      {/* Shifts Reference Modal - Modern view for shift codes & timings */}
+      {/* Shifts Reference Modal - Modern pure English view for shift codes & timings */}
       {showShiftsModal && (
         <div 
           onClick={() => setShowShiftsModal(false)}
@@ -5294,9 +5373,9 @@ function App() {
             left: 0, 
             right: 0, 
             bottom: 0, 
-            backgroundColor: 'rgba(0, 0, 0, 0.65)', 
-            backdropFilter: 'blur(6px)',
-            WebkitBackdropFilter: 'blur(6px)',
+            backgroundColor: 'rgba(15, 23, 42, 0.65)', 
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             zIndex: 1000, 
             display: 'flex', 
             alignItems: 'center', 
@@ -5309,45 +5388,47 @@ function App() {
             className="animate-in fade-in zoom-in-95 duration-200" 
             style={{ 
               backgroundColor: 'var(--bg-main)', 
-              borderRadius: '16px', 
+              borderRadius: '20px', 
               width: '100%', 
-              maxWidth: '560px', 
+              maxWidth: '620px', 
               maxHeight: '85vh', 
               display: 'flex', 
               flexDirection: 'column', 
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', 
-              border: '1px solid var(--border-color)',
+              boxShadow: isDark 
+                ? '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1)' 
+                : '0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.06)', 
               overflow: 'hidden'
             }}
           >
             {/* Header */}
             <div style={{ 
-              padding: '18px 22px', 
+              padding: '20px 24px 16px', 
               borderBottom: '1px solid var(--border-color)', 
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'space-between',
               backgroundColor: 'var(--header-bg)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{ 
-                  width: '38px', 
-                  height: '38px', 
-                  borderRadius: '10px', 
-                  backgroundColor: 'rgba(59, 130, 246, 0.12)', 
+                  width: '42px', 
+                  height: '42px', 
+                  borderRadius: '12px', 
+                  backgroundColor: isDark ? 'rgba(59, 130, 246, 0.16)' : '#eff6ff', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
-                  color: '#3B82F6' 
+                  color: '#2563eb',
+                  border: isDark ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid #bfdbfe'
                 }}>
-                  <Clock size={20} />
+                  <Clock size={22} />
                 </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
-                    Shifts & Hours / الشفتات والمواعيد
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+                    Shift Directory
                   </h2>
-                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
-                    Official shift codes and active working hours
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500' }}>
+                    Official shift codes, operating hours & leave definitions
                   </p>
                 </div>
               </div>
@@ -5355,10 +5436,10 @@ function App() {
                 type="button"
                 onClick={() => setShowShiftsModal(false)} 
                 style={{ 
-                  width: '30px', 
-                  height: '30px', 
-                  borderRadius: '50%', 
-                  background: 'var(--hover-bg)', 
+                  width: '32px', 
+                  height: '32px', 
+                  borderRadius: '8px', 
+                  background: 'var(--bg-card)', 
                   border: '1px solid var(--border-color)', 
                   color: 'var(--text-muted)', 
                   cursor: 'pointer', 
@@ -5369,34 +5450,45 @@ function App() {
                   fontWeight: 'bold', 
                   transition: 'all 0.15s' 
                 }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-main)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--bg-card)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
                 aria-label="Close"
               >
                 ✕
               </button>
             </div>
 
-            {/* Quick Search */}
-            <div style={{ padding: '12px 22px 10px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)' }}>
+            {/* Filter & Search Bar */}
+            <div style={{ 
+              padding: '14px 24px', 
+              borderBottom: '1px solid var(--border-color)', 
+              backgroundColor: 'var(--bg-main)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              {/* Search Bar */}
               <div style={{ position: 'relative' }}>
-                <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <Search size={15} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
                   type="text"
-                  placeholder="Search shift code (e.g. A, B, BB) or time..."
+                  placeholder="Search by code (e.g. A, B, BB) or duty hours..."
                   value={shiftSearchQuery}
                   onChange={(e) => setShiftSearchQuery(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '8px 12px 8px 36px',
+                    padding: '9px 14px 9px 38px',
                     backgroundColor: 'var(--bg-card)',
                     border: '1px solid var(--border-color)',
-                    borderRadius: '8px',
+                    borderRadius: '10px',
                     fontSize: '13px',
                     color: 'var(--text-main)',
                     outline: 'none',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.15s'
                   }}
+                  onFocus={e => e.target.style.borderColor = '#2563eb'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border-color)'}
                 />
                 {shiftSearchQuery && (
                   <button
@@ -5411,18 +5503,62 @@ function App() {
                       border: 'none',
                       color: 'var(--text-muted)',
                       cursor: 'pointer',
-                      fontSize: '12px'
+                      fontSize: '12px',
+                      padding: '4px'
                     }}
                   >
                     ✕
                   </button>
                 )}
               </div>
+
+              {/* Segmented Filter Pills */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {[
+                  { id: 'all', label: 'All Shifts', count: shiftTypes.length },
+                  { id: 'working', label: 'Working Shifts', count: shiftTypes.filter(s => s.start_time || s.end_time).length },
+                  { id: 'leave', label: 'Off & Leaves', count: shiftTypes.filter(s => !s.start_time && !s.end_time).length }
+                ].map(tab => {
+                  const isActive = shiftCategoryFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setShiftCategoryFilter(tab.id)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        border: isActive ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                        backgroundColor: isActive ? '#2563eb' : 'var(--bg-card)',
+                        color: isActive ? '#ffffff' : 'var(--text-muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <span>{tab.label}</span>
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '1px 6px',
+                        borderRadius: '10px',
+                        backgroundColor: isActive ? 'rgba(255, 255, 255, 0.25)' : 'var(--hover-bg)',
+                        color: isActive ? '#ffffff' : 'var(--text-muted)'
+                      }}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* List of shifts */}
             <div className="custom-scrollbar" style={{ 
-              padding: '16px 22px', 
+              padding: '16px 24px', 
               overflowY: 'auto', 
               flex: 1, 
               display: 'flex', 
@@ -5432,8 +5568,8 @@ function App() {
               {sortedAndFilteredShifts.length > 0 ? (
                 sortedAndFilteredShifts.map(s => {
                   const hasTime = !!(s.start_time || s.end_time);
-                  const isOff = s.code === 'OFF' || s.code === 'OUT' || s.code === 'V' || s.code === 'H' || s.code === 'S' || s.code === 'M';
                   const duration = hasTime ? calculateShiftDuration(s.start_time, s.end_time) : null;
+                  const badgeStyle = getShiftBadgeStyle(s.code, hasTime, isDark);
 
                   return (
                     <div 
@@ -5443,98 +5579,132 @@ function App() {
                         alignItems: 'center', 
                         justifyContent: 'space-between',
                         padding: '12px 16px', 
-                        borderRadius: '10px', 
+                        borderRadius: '12px', 
                         border: '1px solid var(--border-color)', 
                         backgroundColor: 'var(--bg-card)', 
-                        transition: 'all 0.15s ease',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                        transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                        boxShadow: isDark ? '0 1px 2px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.03)'
                       }}
                       onMouseEnter={e => {
-                        e.currentTarget.style.borderColor = hasTime ? '#3B82F6' : 'var(--border-color)';
+                        e.currentTarget.style.borderColor = hasTime ? (isDark ? '#3b82f6' : '#2563eb') : 'var(--border-color)';
                         e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
                       }}
                       onMouseLeave={e => {
                         e.currentTarget.style.borderColor = 'var(--border-color)';
                         e.currentTarget.style.backgroundColor = 'var(--bg-card)';
+                        e.currentTarget.style.transform = 'none';
                       }}
                     >
-                      {/* Left: Code badge */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      {/* Left: Auto-sizing code badge and shift details */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0, flex: 1 }}>
                         <div style={{ 
-                          width: '46px', 
-                          height: '46px', 
-                          minWidth: '46px',
-                          borderRadius: '10px', 
-                          backgroundColor: isOff 
-                            ? (isDark ? 'rgba(148, 163, 184, 0.12)' : '#f1f5f9')
-                            : (isDark ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)'),
-                          color: isOff ? 'var(--text-muted)' : '#2563eb',
-                          border: `1px solid ${isOff ? 'var(--border-color)' : (isDark ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)')}`,
-                          display: 'flex', 
+                          display: 'inline-flex',
                           alignItems: 'center', 
                           justifyContent: 'center', 
+                          padding: (s.code || '').length > 4 ? '0 12px' : '0 10px',
+                          height: '38px', 
+                          minWidth: '46px',
+                          borderRadius: '10px', 
+                          backgroundColor: badgeStyle.bg,
+                          color: badgeStyle.color,
+                          border: `1px solid ${badgeStyle.border}`,
                           fontWeight: '800', 
-                          fontSize: (s.code || '').length > 3 ? '12px' : '15px',
-                          letterSpacing: '0.5px'
+                          fontSize: (s.code || '').length > 6 ? '11px' : (s.code || '').length > 3 ? '12px' : '15px',
+                          letterSpacing: (s.code || '').length > 4 ? '0.02em' : '0.04em',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                          flexShrink: 0
                         }}>
                           {s.code}
                         </div>
 
                         {/* Middle: Shift time or description */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
                           {hasTime ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)', letterSpacing: '0.01em' }}>
-                                {formatTime(s.start_time)} – {formatTime(s.end_time)}
-                              </span>
-                            </div>
+                            <span style={{ 
+                              fontSize: '14px', 
+                              fontWeight: '700', 
+                              color: 'var(--text-main)', 
+                              letterSpacing: '0.01em',
+                              fontFamily: 'system-ui, -apple-system, sans-serif'
+                            }}>
+                              {formatTime(s.start_time)} – {formatTime(s.end_time)}
+                            </span>
                           ) : (
                             <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>
-                              {s.code === 'OFF' ? 'Day Off / عطلة' : s.code === 'V' ? 'Vacation / إجازة اعتيادية' : s.code === 'H' ? 'Holiday / عطلة رسمية' : s.code === 'S' ? 'Sick Leave / إجازة مرضية' : s.code === 'M' ? 'Maternity / إجازة أمومة' : 'Non-working / بدون وقت محدد'}
+                              {getShiftTitle(s.code, s.description)}
                             </span>
                           )}
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
-                              {hasTime ? (s.description || 'Standard scheduled shift') : 'No work hours'}
-                            </span>
-                          </div>
+                          <span style={{ 
+                            fontSize: '11px', 
+                            color: 'var(--text-muted)', 
+                            fontWeight: '500',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
+                            {hasTime ? (s.description || 'Standard Scheduled Shift') : 'Off-duty / Leave status'}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Right: Duration badge */}
-                      {duration && (
-                        <div style={{
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          backgroundColor: isDark ? 'rgba(16, 118, 66, 0.2)' : 'rgba(15, 118, 66, 0.1)',
-                          color: 'var(--accent-green)',
-                          fontSize: '11px',
-                          fontWeight: '800',
-                          border: '1px solid rgba(15, 118, 66, 0.25)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          <Clock size={11} />
-                          {duration}
-                        </div>
-                      )}
+                      {/* Right: Duration pill or Status pill */}
+                      <div style={{ marginLeft: '12px', flexShrink: 0 }}>
+                        {hasTime && duration ? (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '20px',
+                            backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ecfdf5',
+                            border: isDark ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid #a7f3d0',
+                            color: isDark ? '#34d399' : '#059669',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            letterSpacing: '0.02em',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            <Clock size={12} />
+                            <span>{duration}</span>
+                          </div>
+                        ) : (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '4px 10px',
+                            borderRadius: '20px',
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#f4f4f5',
+                            border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #e4e4e7',
+                            color: 'var(--text-muted)',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            letterSpacing: '0.02em',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            Off-duty
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })
               ) : (
-                <div style={{ textAlign: 'center', padding: '36px 12px', color: 'var(--text-muted)' }}>
-                  <Clock size={32} style={{ margin: '0 auto 10px', opacity: 0.4 }} />
-                  <p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>No shifts matching "{shiftSearchQuery}"</p>
+                <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)' }}>
+                  <Clock size={36} style={{ margin: '0 auto 12px', opacity: 0.35 }} />
+                  <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>No shifts found</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px' }}>
+                    {shiftSearchQuery ? `No matches for "${shiftSearchQuery}"` : 'No shifts in this category'}
+                  </p>
                 </div>
               )}
             </div>
 
             {/* Footer */}
             <div style={{ 
-              padding: '12px 22px', 
+              padding: '14px 24px', 
               borderTop: '1px solid var(--border-color)', 
               display: 'flex', 
               alignItems: 'center', 
@@ -5542,13 +5712,13 @@ function App() {
               backgroundColor: 'var(--header-bg)'
             }}>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>
-                Total: {sortedAndFilteredShifts.length} {sortedAndFilteredShifts.length === 1 ? 'Shift' : 'Shifts'}
+                Showing {sortedAndFilteredShifts.length} of {shiftTypes.length} {shiftTypes.length === 1 ? 'shift' : 'shifts'}
               </span>
               <button 
                 type="button"
                 onClick={() => setShowShiftsModal(false)} 
                 style={{ 
-                  padding: '8px 18px', 
+                  padding: '8px 20px', 
                   borderRadius: '8px', 
                   border: '1px solid var(--border-color)', 
                   backgroundColor: 'var(--bg-card)', 
