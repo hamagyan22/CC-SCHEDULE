@@ -2546,45 +2546,45 @@ function App() {
                 {currentTab === 'manage' ? <Calendar size={16} /> : <Settings size={16} />}
                 {currentTab === 'manage' ? 'View Schedule' : 'Manage'}
               </button>
+
+              {/* Export Button - Only accessible and visible to Super Admin Mohammed Dlshad */}
+              <button 
+                onClick={() => {
+                  const week = WEEKS[currentWeekIndex];
+                  if (!exportRangeStart || !exportRangeEnd) {
+                    if (week && week.dates && week.dates.length === 7) {
+                      setExportRangeStart(week.dates[0]);
+                      setExportRangeEnd(week.dates[6]);
+                    } else if (activeDates && activeDates.length > 0) {
+                      setExportRangeStart(activeDates[0]);
+                      setExportRangeEnd(activeDates[activeDates.length - 1]);
+                    }
+                  }
+                  setShowExportModal(true);
+                }}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  padding: '10px 16px', 
+                  borderRadius: '4px', 
+                  fontSize: '12px', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer', 
+                  backgroundColor: 'var(--bg-card)', 
+                  border: '1px solid var(--border-color)', 
+                  color: 'var(--text-main)', 
+                  transition: 'background-color 0.15s',
+                  whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--bg-card)'}
+                title="Export schedule in organization system Excel format (.xlsx)"
+              >
+                <FileSpreadsheet size={16} style={{ color: 'var(--accent-green)' }} /> Export
+              </button>
             </React.Fragment>
           )}
-
-          {/* Export Button - Identical styling to Manage / History / Access */}
-          <button 
-            onClick={() => {
-              const week = WEEKS[currentWeekIndex];
-              if (!exportRangeStart || !exportRangeEnd) {
-                if (week && week.dates && week.dates.length === 7) {
-                  setExportRangeStart(week.dates[0]);
-                  setExportRangeEnd(week.dates[6]);
-                } else if (activeDates && activeDates.length > 0) {
-                  setExportRangeStart(activeDates[0]);
-                  setExportRangeEnd(activeDates[activeDates.length - 1]);
-                }
-              }
-              setShowExportModal(true);
-            }}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px', 
-              padding: '10px 16px', 
-              borderRadius: '4px', 
-              fontSize: '12px', 
-              fontWeight: 'bold', 
-              cursor: 'pointer', 
-              backgroundColor: 'var(--bg-card)', 
-              border: '1px solid var(--border-color)', 
-              color: 'var(--text-main)', 
-              transition: 'background-color 0.15s',
-              whiteSpace: 'nowrap'
-            }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'var(--bg-card)'}
-            title="Export schedule in organization system Excel format (.xlsx)"
-          >
-            <FileSpreadsheet size={16} style={{ color: 'var(--accent-green)' }} /> Export
-          </button>
         </div>
 
         {/* SCHEDULE TAB */}
@@ -4887,7 +4887,7 @@ function App() {
       )}
 
       {/* Modern Simple Modal: Export Organization System Excel (Date Range) */}
-      {showExportModal && (
+      {showExportModal && currentUser?.email?.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && (
         <div style={{ 
           position: 'fixed', 
           top: 0, 
