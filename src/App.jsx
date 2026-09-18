@@ -2359,11 +2359,11 @@ function App() {
       )}
 
       {/* Top Navbar */}
-      <nav style={{ padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <img src="/logo.webp" alt="FIB Logo" className="fib-logo" style={{ height: '64px', objectFit: 'contain' }} />
+      <nav className="app-navbar" style={{ padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="brand-section" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <img src="/logo.webp" alt="FIB Logo" className="fib-logo brand-logo" style={{ height: '64px', objectFit: 'contain' }} />
           {/* Vertical Divider */}
-          <div style={{ width: '1.5px', height: '40px', backgroundColor: 'var(--border-color)', borderRadius: '2px' }}></div>
+          <div className="brand-divider" style={{ width: '1.5px', height: '40px', backgroundColor: 'var(--border-color)', borderRadius: '2px' }}></div>
           <div>
             <h1 style={{ 
               fontSize: '18px', 
@@ -2376,7 +2376,7 @@ function App() {
             <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0, marginTop: '3px', fontWeight: '500', letterSpacing: '0.02em' }}>Shift & Team Management</p>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* Theme Toggle Button */}
           <button 
             onClick={() => setIsDark(!isDark)}
@@ -2403,6 +2403,7 @@ function App() {
 
           {/* User Profile Card */}
           <div 
+            className="user-card"
             onClick={() => {
               setEditDisplayName(currentUser?.displayName || '');
               setEditPhotoURL(currentUser?.photoURL || '');
@@ -2452,7 +2453,7 @@ function App() {
                    (authorizedUsers.find(u => u.id === currentUser?.email?.toLowerCase().trim())?.role || userRoles[currentUser?.email?.toLowerCase().trim()] || '👤 Team Leader')}
                 </span>
               </div>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
+              <span className="user-name" style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.2' }}>
                 {currentUser?.displayName || currentUser?.email}
               </span>
             </div>
@@ -2461,6 +2462,7 @@ function App() {
 
           {/* Log Out Button */}
           <button 
+            className="logout-btn"
             onClick={() => signOut(auth)} 
             style={{ 
               display: 'flex', 
@@ -2494,10 +2496,10 @@ function App() {
         </div>
       </nav>
 
-      <main style={{ maxWidth: '1500px', margin: '0 auto', padding: '0 32px 32px 32px' }}>
+      <main className="app-main" style={{ maxWidth: '1500px', margin: '0 auto', padding: '0 32px 32px 32px' }}>
         
         {/* Real-time Overview Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+        <div className="overview-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
           
           {/* Call Team Card */}
           <div style={{ padding: '14px', borderRadius: '12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', height: '100%' }}>
@@ -2622,9 +2624,9 @@ function App() {
         </div>
 
         {/* Toolbar */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', marginBottom: '24px', marginTop: '40px' }}>
+        <div className="dashboard-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', marginBottom: '24px', marginTop: '40px' }}>
           
-          <div style={{ position: 'relative', width: '280px' }}>
+          <div className="search-box-container" style={{ position: 'relative', width: '280px' }}>
             <Search style={{ width: '16px', height: '16px', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input type="text" placeholder="Search agent..." 
                    value={searchQuery}
@@ -3277,7 +3279,7 @@ function App() {
               </div>
             </div>
 
-            <div className="custom-scrollbar" style={{ 
+            <div className="custom-scrollbar table-scroll-container" style={{ 
               maxHeight: 'calc(100vh - 195px)', 
               overflow: 'auto', 
               borderBottom: '1px solid var(--border-color)', 
@@ -3328,14 +3330,15 @@ function App() {
                     <th className="employee-col" style={{ 
                       position: 'sticky',
                       top: 0,
-                      zIndex: 45,
+                      left: 0,
+                      zIndex: 50,
                       backgroundColor: 'var(--header-bg)',
                       opacity: 1,
                       paddingLeft: '14px', 
                       paddingRight: '8px',
                       height: '32px',
                       borderBottom: '1px solid var(--border-color)',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                      boxShadow: '2px 0 6px -2px rgba(0,0,0,0.15)',
                       verticalAlign: 'middle'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '100%' }}>
@@ -3455,7 +3458,9 @@ function App() {
                     {/* Team Header */}
                     <tr>
                       <td colSpan={activeDates.length + 1} style={{ backgroundColor: 'var(--accent-green)', color: 'white', fontWeight: 'bold', padding: '10px 16px', fontSize: '13px', textTransform: 'capitalize', letterSpacing: '0.5px' }}>
-                        {group.name}
+                        <span style={{ position: 'sticky', left: '14px', display: 'inline-block' }}>
+                          {group.name}
+                        </span>
                       </td>
                     </tr>
                     
@@ -3472,10 +3477,18 @@ function App() {
                                 setSelectionRange({ empId: emp.id, startCol: 0, endCol: activeDates.length - 1 });
                               }
                             }}
-                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                            style={{ 
+                              cursor: 'pointer', 
+                              userSelect: 'none',
+                              position: 'sticky',
+                              left: 0,
+                              zIndex: 25,
+                              backgroundColor: (selectionRange && selectionRange.empId === emp.id) ? 'var(--hover-bg)' : 'var(--bg-card)',
+                              boxShadow: '2px 0 6px -2px rgba(0,0,0,0.12)'
+                            }}
                             title="Click to select row in blue (Ctrl+C to copy)"
                           >
-                            <div>{emp.name}</div>
+                            <div title={emp.name}>{emp.name}</div>
                           </td>
                           {activeDates.map((date, dayIdx) => {
                             const shift = schedules[emp.id]?.[date] || ''
@@ -3644,7 +3657,15 @@ function App() {
 
                     {/* Team Summary Row */}
                     <tr>
-                      <td className="employee-col" style={{ backgroundColor: 'var(--header-bg)', padding: '10px 16px', borderTop: '2px solid var(--accent-green)' }}>
+                      <td className="employee-col" style={{ 
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 25,
+                        backgroundColor: 'var(--header-bg)', 
+                        padding: '10px 16px', 
+                        borderTop: '2px solid var(--accent-green)',
+                        boxShadow: '2px 0 6px -2px rgba(0,0,0,0.12)'
+                      }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--accent-green)' }}></div>
                           <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--accent-green)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Summary</div>
