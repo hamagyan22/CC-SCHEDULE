@@ -26,55 +26,66 @@ const isYounisLeader = (name) => {
          n.includes('يونس كمال');
 };
 
-// Organization System Roster & Shift Mapping
+// Normalization helper for employee names
+function normalizeEmpName(str) {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/[\u0600-\u06FF]/g, ' ')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Organization System Roster (47 official employees with strict 1-to-1 mapping)
 const SYSTEM_EMPLOYEES = [
-  { empNo: 507, name: 'Mokhlad Midhat Ali', aliases: ['mokhalad ali', 'mokhlad ali', 'mokhalad', 'mokhlad'] },
-  { empNo: 347, name: 'Haseeb Adeeb Muhei', aliases: ['haseeb adeeb', 'haseeb'] },
-  { empNo: 376, name: 'Zainab Khalid Rashid', aliases: ['zainab khalid rasheed', 'zainab khalid', 'zainab'] },
-  { empNo: 374, name: 'Yousif Rashid راشد Darwish', aliases: ['yousif rashid', 'yousif darwish'] },
-  { empNo: 334, name: 'Ahmed Jalil Mohammed', aliases: ['ahmed jalil', 'ahmed jaleel'] },
-  { empNo: 377, name: 'Zhalla Sherzad Salam', aliases: ['zhalla salam', 'zhalla', 'zhala salam'] },
-  { empNo: 424, name: 'Marwa Khalil Khala', aliases: ['marwa khalil'] },
-  { empNo: 342, name: 'Azad Mohammed Abdullah', aliases: ['azad muhammad', 'azad mohammed'] },
-  { empNo: 348, name: 'Hevr Adnan Ismail', aliases: ['hewr adnan', 'hevr adnan'] },
-  { empNo: 358, name: 'Muzhda Omar Ali', aliases: ['muzhda omar ali', 'muzhda'] },
-  { empNo: 381, name: 'Shahab Ahmed Mohammed', aliases: ['shahab ahmed muhammed', 'shahab ahmed', 'shahab'] },
-  { empNo: 339, name: 'Alla Satar Karim', aliases: ['alla satar', 'alla sattar', 'ala satar'] },
-  { empNo: 373, name: 'Younis Kamal Ahmed', aliases: ['younis kamal', 'yonis kamal'] },
-  { empNo: 375, name: 'Zahra Yousif Tofiq', aliases: ['zahra yousif', 'zahra yousef', 'zahra'] },
-  { empNo: 382, name: 'Ismail Majeed Ahmad', aliases: ['ismail ahmed', 'ismail majeed'] },
-  { empNo: 368, name: 'Saja Bashar Anwar', aliases: ['saja bashar anwar', 'saja bashar', 'saja'] },
-  { empNo: 349, name: 'Kani Sami Othman', aliases: ['kani sami', 'kani samy'] },
-  { empNo: 340, name: 'Ankidu Buya Saada', aliases: ['ankido buya', 'ankidu buya', 'enkidu buya', 'ankido', 'ankidu', 'enkidu'] },
-  { empNo: 345, name: 'Frmesk Younis Auzer', aliases: ['frmesk younis', 'frmesk'] },
-  { empNo: 371, name: 'Soma Sherko Muhammed', aliases: ['soma sherko', 'soma'] },
-  { empNo: 336, name: 'Ahmed Rostam Omar', aliases: ['ahmed rustam', 'ahmed rostam'] },
-  { empNo: 506, name: 'Laven Musleh Khaleel', aliases: ['laveen khaleel', 'laven khaleel', 'laveen', 'laven'] },
-  { empNo: 350, name: 'Lana Hekmat Rafiq', aliases: ['lana halmat rafeeq', 'lana hekmat', 'lana halmat'] },
-  { empNo: 351, name: 'Isra Kamil Mohammed', aliases: ['isra kamil', 'lara kamil'] },
-  { empNo: 372, name: 'Taban Sirvan Jalal', aliases: ['taban sirwan', 'taban sirvan', 'taban'] },
-  { empNo: 360, name: 'Navin Moath Mohammed', aliases: ['nawen maadh', 'navin moath', 'nawen', 'navin'] },
-  { empNo: 362, name: 'Osama Saadi Mahmoud', aliases: ['ossama saadi', 'osama saadi', 'ossama'] },
-  { empNo: 365, name: 'Rasan Ismail Mousa', aliases: ['rassan ismail', 'rasan ismail', 'rassan'] },
-  { empNo: 367, name: 'Sana Dler Fuad', aliases: ['sana dler'] },
-  { empNo: 356, name: 'Mohammed Jihad Nuri', aliases: ['mohammed jihad', 'mohamad jihad'] },
-  { empNo: 369, name: 'Saven Sarip Hussien', aliases: ['sawen', 'saven'] },
-  { empNo: 370, name: 'Shireen Weise Saeed', aliases: ['shireen waisi', 'shireen weise', 'shireen'] },
-  { empNo: 357, name: 'Mohammad Dilshad Omar', aliases: ['mohammed dilshad', 'mohammad dilshad'] },
-  { empNo: 341, name: 'Aya Yassin Abdulrahman', aliases: ['aya yasin', 'aya yassin', 'aya'] },
-  { empNo: 366, name: 'Serbaz Namiq نامق Hasan', aliases: ['sarbaz namiq hasan', 'sarbaz namiq', 'serbaz namiq'] },
-  { empNo: 337, name: 'Akar Dyar Omar', aliases: ['akar omer', 'akar dyar'] },
-  { empNo: 221, name: 'Zhala Sherzad khoudhur', aliases: ['zhala sherzad'] },
-  { empNo: 584, name: 'Salam Saddam Mohammed Rasheed', aliases: ['salam sadam muhammad', 'salam saddam', 'salam sadam'] },
-  { empNo: 585, name: 'Ammar Hussain Salih', aliases: ['amar hussein salih', 'ammar hussain', 'amar hussein'] },
-  { empNo: 586, name: 'Haneen Abdulkarim Iskandar', aliases: ['haneen abd-al kareem', 'haneen abdulkarim', 'haneen'] },
-  { empNo: 353, name: 'Mohammad Azar Saber', aliases: ['moahammed azad', 'mohammed azad', 'mohammad azar', 'azar saber'] },
-  { empNo: 343, name: 'Bana Firya Ahmed', aliases: ['bana ahmed', 'bana firya', 'bana'] },
-  { empNo: 344, name: 'Dhuka Khanjar Nuri', aliases: ['dhuha khanjer', 'dhuka khanjar', 'dhuha', 'dhuka'] },
-  { empNo: 364, name: 'Rabar Majid Mohammed', aliases: ['rabar mohammed', 'rabar majid', 'rabar'] },
-  { empNo: 691, name: 'Marwa Shaalan Hussein', aliases: ['marwa shalaan', 'marwa shaalan'] },
-  { empNo: 692, name: 'Mohammed Saman Salim', aliases: ['mohammed salem', 'mohammed saman'] },
-  { empNo: 575, name: 'Kazhwan Wrga Ali', aliases: ['kazhvan wirya', 'kazhwan wrga', 'kazhvan', 'kazhwan'] },
+  { empNo: 507, name: 'Mokhlad Midhat Ali', defaultTeam: 'evening', aliases: ['mokhlad midhat ali', 'mokhlad midhat', 'mokhalad ali', 'mokhlad ali', 'mokhalad midhat ali', 'mokhalad midhat', 'mokhlad', 'mokhalad'] },
+  { empNo: 347, name: 'Haseeb Adeeb Muhei', defaultTeam: 'evening', aliases: ['haseeb adeeb muhei', 'haseeb adeeb', 'haseeb muhei', 'haseeb adeb', 'haseeb'] },
+  { empNo: 376, name: 'Zainab Khalid Rashid', defaultTeam: 'morning', aliases: ['zainab khalid rashid', 'zainab khalid rasheed', 'zainab khalid', 'zainab rasheed', 'zainab rashid', 'zainab'] },
+  { empNo: 374, name: 'Yousif Rashid راشد Darwish', defaultTeam: 'evening', aliases: ['yousif rashid darwish', 'yousif rashid', 'yousif darwish', 'yousef rashid', 'yousef darwish', 'yousif', 'yousef'] },
+  { empNo: 334, name: 'Ahmed Jalil Mohammed', defaultTeam: 'evening', aliases: ['ahmed jalil mohammed', 'ahmed jalil mohammad', 'ahmed jalil', 'ahmed jaleel mohammed', 'ahmed jaleel', 'ahmed galil'] },
+  { empNo: 377, name: 'Zhalla Sherzad Salam', defaultTeam: 'morning', aliases: ['zhalla sherzad salam', 'zhalla salam', 'zhalla sherzad', 'zhala salam', 'zhalla'] },
+  { empNo: 424, name: 'Marwa Khalil Khala', defaultTeam: 'morning', aliases: ['marwa khalil khala', 'marwa khalil', 'marwa khaleel khala', 'marwa khaleel'] },
+  { empNo: 342, name: 'Azad Mohammed Abdullah', defaultTeam: 'evening', aliases: ['azad mohammed abdullah', 'azad muhammad abdullah', 'azad mohammed', 'azad muhammad', 'azad abdullah', 'azad'] },
+  { empNo: 348, name: 'Hevr Adnan Ismail', defaultTeam: 'evening', aliases: ['hevr adnan ismail', 'hewr adnan ismail', 'hevr adnan', 'hewr adnan', 'hevr', 'hewr'] },
+  { empNo: 358, name: 'Muzhda Omar Ali', defaultTeam: 'morning', aliases: ['muzhda omar ali', 'muzhda omar', 'muzhda ali', 'muzhda', 'mushda omar', 'mujda omar'] },
+  { empNo: 381, name: 'Shahab Ahmed Mohammed', defaultTeam: 'evening', aliases: ['shahab ahmed mohammed', 'shahab ahmed muhammed', 'shahab ahmed', 'shahab muhammed', 'shahab mohammed', 'shahab'] },
+  { empNo: 339, name: 'Alla Satar Karim', defaultTeam: 'morning', aliases: ['alla satar karim', 'alla satar', 'alla sattar', 'ala satar karim', 'ala satar', 'ala sattar', 'alla karim'] },
+  { empNo: 373, name: 'Younis Kamal Ahmed', defaultTeam: 'evening', aliases: ['younis kamal ahmed', 'younis kamal', 'yonis kamal ahmed', 'yonis kamal', 'younis balindi', 'yonis balindi', 'younis', 'yonis', 'balindi'] },
+  { empNo: 375, name: 'Zahra Yousif Tofiq', defaultTeam: 'morning', aliases: ['zahra yousif tofiq', 'zahra yousif', 'zahra yousef tofiq', 'zahra yousef', 'zahra tofiq', 'zahra'] },
+  { empNo: 382, name: 'Ismail Majeed Ahmad', defaultTeam: 'evening', aliases: ['ismail majeed ahmad', 'ismail majeed ahmed', 'ismail majeed', 'ismail ahmed', 'ismail ahmad', 'ismail'] },
+  { empNo: 368, name: 'Saja Bashar Anwar', defaultTeam: 'morning', aliases: ['saja bashar anwar', 'saja bashar', 'saja anwar', 'saja'] },
+  { empNo: 349, name: 'Kani Sami Othman', defaultTeam: 'morning', aliases: ['kani sami othman', 'kani sami', 'kani samy othman', 'kani samy', 'kani othman', 'kani'] },
+  { empNo: 340, name: 'Ankidu Buya Saada', defaultTeam: 'morning', aliases: ['ankidu buya saada', 'ankido buya saada', 'ankidu buya', 'ankido buya', 'enkidu buya', 'ankidu saada', 'ankido saada', 'ankidu', 'ankido', 'enkidu'] },
+  { empNo: 345, name: 'Frmesk Younis Auzer', defaultTeam: 'morning', aliases: ['frmesk younis auzer', 'frmesk younis', 'frmesk yonis', 'frmesk auzer', 'frmesk'] },
+  { empNo: 371, name: 'Soma Sherko Muhammed', defaultTeam: 'morning', aliases: ['soma sherko muhammed', 'soma sherko mohammed', 'soma sherko', 'soma mohammed', 'soma'] },
+  { empNo: 336, name: 'Ahmed Rostam Omar', defaultTeam: 'evening', aliases: ['ahmed rostam omar', 'ahmed rostam', 'ahmed rustam omar', 'ahmed rustam', 'ahmed omar'] },
+  { empNo: 506, name: 'Laven Musleh Khaleel', defaultTeam: 'evening', aliases: ['laven musleh khaleel', 'laven musleh khalil', 'laveen musleh khaleel', 'laven khaleel', 'laveen khaleel', 'laven khalil', 'laveen khalil', 'laven', 'laveen'] },
+  { empNo: 350, name: 'Lana Halmat Rafiq', defaultTeam: 'morning', aliases: ['lana halmat rafiq', 'lana halmat rafeeq', 'lana halmat', 'lana hekmat rafiq', 'lana hekmat', 'lana rafiq', 'lana'] },
+  { empNo: 351, name: 'Lara Kamil Mohammed', defaultTeam: 'morning', aliases: ['lara kamil mohammed', 'lara kamil mohammad', 'lara kamil', 'isra kamil mohammed', 'isra kamil', 'lara'] },
+  { empNo: 372, name: 'Taban Sirvan Jalal', defaultTeam: 'morning', aliases: ['taban sirvan jalal', 'taban sirwan jalal', 'taban sirvan', 'taban sirwan', 'tabea sirwan jalal', 'tabea sirwan', 'taban jalal', 'taban', 'tabea'] },
+  { empNo: 360, name: 'Navin Moath Mohammed', defaultTeam: 'evening', aliases: ['navin moath mohammed', 'navin moath', 'nawen maadh', 'nawen moath', 'navin maadh', 'navin mohammed', 'nawen', 'navin'] },
+  { empNo: 362, name: 'Osama Saadi Mahmoud', defaultTeam: 'evening', aliases: ['osama saadi mahmoud', 'ossama saadi mahmoud', 'osama saadi', 'ossama saadi', 'osama mahmoud', 'osama', 'ossama'] },
+  { empNo: 365, name: 'Rasan Ismail Mousa', defaultTeam: 'morning', aliases: ['rasan ismail mousa', 'rassan ismail mousa', 'rasan ismail', 'rassan ismail', 'rasan mousa', 'rasan', 'rassan'] },
+  { empNo: 367, name: 'Sana Dler Fuad', defaultTeam: 'evening', aliases: ['sana dler fuad', 'sana dler', 'sana dlair', 'sana fuad', 'sana'] },
+  { empNo: 356, name: 'Mohammed Jihad Nuri', defaultTeam: 'morning', aliases: ['mohammed jihad nuri', 'mohamad jihad nuri', 'mohammed jihad', 'mohamad jihad', 'mohammed nuri'] },
+  { empNo: 369, name: 'Sawen Sarip Hussien', defaultTeam: 'morning', aliases: ['sawen sarip hussien', 'saven sarip hussien', 'sawen sarip', 'saven sarip', 'sawen hussien', 'sawen', 'saven'] },
+  { empNo: 370, name: 'Shireen Weise Saeed', defaultTeam: 'morning', aliases: ['shireen weise saeed', 'shireen waisi saeed', 'shireen weise', 'shireen waisi', 'shireen saeed', 'shireen', 'shirin'] },
+  { empNo: 357, name: 'Mohammad Dilshad Omar', defaultTeam: 'morning', aliases: ['mohammed dlshad omar', 'mohammad dlshad omar', 'mohammed dilshad omar', 'mohammad dilshad omar', 'mohammed dlshad', 'mohammad dlshad', 'mohammed dilshad', 'mohammad dilshad', 'dlshad omar', 'dilshad omar', 'dlshad', 'dilshad'] },
+  { empNo: 341, name: 'Aya Yassin Abdulrahman', defaultTeam: 'morning', aliases: ['aya yassin abdulrahman', 'aya yasin abdulrahman', 'aya yassin', 'aya yasin', 'aya abdulrahman', 'aya'] },
+  { empNo: 366, name: 'Serbaz Namiq نامق Hasan', defaultTeam: 'evening', aliases: ['serbaz namiq hasan', 'sarbaz namiq hasan', 'serbaz namiq', 'sarbaz namiq', 'serbaz hasan', 'serbaz', 'sarbaz'] },
+  { empNo: 337, name: 'Akar Dyar Omar', defaultTeam: 'evening', aliases: ['akar dyar omar', 'akar dyar', 'akar omer', 'akar omar', 'akar'] },
+  { empNo: 221, name: 'Zhala Sherzad khoudhur', defaultTeam: 'morning', aliases: ['zhala sherzad khoudhur', 'zhala sherzad khudhur', 'zhala sherzad', 'zhala khoudhur', 'zhala khudhur'] },
+  { empNo: 584, name: 'Salam Saddam Mohammed Rasheed', defaultTeam: 'evening', aliases: ['salam saddam mohammed rasheed', 'salam sadam muhammad rasheed', 'salam saddam rasheed', 'salam saddam mohammed', 'salam saddam', 'salam sadam', 'salam'] },
+  { empNo: 585, name: 'Ammar Hussain Salih', defaultTeam: 'evening', aliases: ['ammar hussain salih', 'amar hussein salih', 'ammar hussain', 'amar hussein', 'ammar salih', 'ammar', 'amar'] },
+  { empNo: 586, name: 'Haneen Abdulkarim Iskandar', defaultTeam: 'morning', aliases: ['haneen abdulkarim iskandar', 'haneen abd-al kareem', 'haneen abdulkarim', 'haneen abdul karim', 'haneen iskandar', 'haneen'] },
+  { empNo: 353, name: 'Mohammad Azar Saber', defaultTeam: 'morning', aliases: ['mohammad azar saber', 'mohammed azar saber', 'mohammad azar', 'mohammed azar', 'azar saber', 'azar'] },
+  { empNo: 343, name: 'Bana Firya Ahmed', defaultTeam: 'morning', aliases: ['bana firya ahmed', 'bana firya', 'bana ahmed', 'bana ferya', 'bana'] },
+  { empNo: 344, name: 'Dhuka Khanjar Nuri', defaultTeam: 'morning', aliases: ['dhuka khanjar nuri', 'dhuha khanjer nuri', 'dhuka khanjar', 'dhuha khanjer', 'dhuka nuri', 'dhuka', 'dhuha'] },
+  { empNo: 364, name: 'Rabar Majid Mohammed', defaultTeam: 'evening', aliases: ['rabar majid mohammed', 'raber majid mohammed', 'rabar majid', 'raber majid', 'rabar mohammed', 'raber mohammed', 'rabar', 'raber'] },
+  { empNo: 691, name: 'Marwa Shaalan Hussein', defaultTeam: 'morning', aliases: ['marwa shaalan hussein', 'marwa shalaan hussein', 'marwa shaalan', 'marwa shalaan', 'marwa hussein'] },
+  { empNo: 692, name: 'Mohammed Saman Salim', defaultTeam: 'evening', aliases: ['mohammed saman salim', 'mohamad saman salim', 'mohammed saman', 'mohamad saman', 'mohammed salim', 'mohammed salem'] },
+  { empNo: 575, name: 'Kazhwan Wrga Ali', defaultTeam: 'evening', aliases: ['kazhwan wrga ali', 'kazhvan wirya ali', 'kazhwan wrga', 'kazhvan wirya', 'kazhwan wirya', 'kazhvan wrga', 'kazhwan ali', 'kazhwan', 'kazhvan'] },
 ];
 
 const SHIFT_SYSTEM_CODE_MAP = {
@@ -88,6 +99,7 @@ const SHIFT_SYSTEM_CODE_MAP = {
   'OFF': 'Day Off - 53651',
   'OUT': 'Day Off - 53651',
   'H': 'Day Off - 53651',
+  'M': 'Day Off - 53651',
   'EMERGENCY': 'Day Off - 53651',
 };
 
@@ -97,10 +109,20 @@ function formatShiftForSystem(shiftCode, empTeamType = 'morning') {
   }
   const clean = shiftCode.trim().toUpperCase();
 
+  // If already formatted official system string, keep it intact
+  if (clean === 'DAY OFF - 53651') return 'Day Off - 53651';
+  if (clean === 'A SHIFT - 55939') return 'A Shift - 55939';
+  if (clean === 'B SHIFT - 55940') return 'B Shift - 55940';
+  if (clean === 'C SHIFT - 55941') return 'C Shift - 55941';
+  if (clean === 'BB SHIFT - 59261') return 'BB Shift - 59261';
+  if (clean === 'BC SHIFT - 59262') return 'BC Shift - 59262';
+  if (clean === 'AC SHIFT - 59263') return 'AC Shift - 59263';
+  if (clean === 'L SHIFT - 59268') return 'L Shift - 59268';
+
   // S (Sick Leave) and V (Vacation Leave):
   // Do NOT make them Day Off.
-  // If employee is from morning team -> 'A Shift - 55939'
-  // If employee is from evening team -> 'B Shift - 55940'
+  // Morning team -> 'A Shift - 55939'
+  // Evening team -> 'B Shift - 55940'
   const isSickOrVacation = 
     clean === 'S' || 
     clean === 'V' || 
@@ -121,20 +143,47 @@ function formatShiftForSystem(shiftCode, empTeamType = 'morning') {
     return empTeamType === 'evening' ? 'B Shift - 55940' : 'A Shift - 55939';
   }
 
-  if (SHIFT_SYSTEM_CODE_MAP[clean]) {
-    return SHIFT_SYSTEM_CODE_MAP[clean];
+  // Official Day Off and other non-working leaves
+  if (
+    clean === 'OFF' || 
+    clean === 'OUT' || 
+    clean === 'H' || 
+    clean === 'M' || 
+    clean === 'EMERGENCY' || 
+    clean === 'DAY OFF' || 
+    clean === 'DAYOFF' || 
+    clean === 'HOLIDAY' || 
+    clean === 'MATERNITY' ||
+    clean.startsWith('OFF') ||
+    clean.startsWith('OUT') ||
+    clean.startsWith('H -') ||
+    clean.startsWith('M -') ||
+    clean.startsWith('EMERGENCY')
+  ) {
+    return 'Day Off - 53651';
   }
-  if (clean.includes('-')) {
-    return shiftCode.trim();
-  }
+
+  // Exact maps
   if (clean === 'BB') return 'BB Shift - 59261';
-  if (clean.startsWith('A') && clean.endsWith('C')) return 'AC Shift - 59263';
-  if (clean.startsWith('B') && clean.endsWith('C')) return 'BC Shift - 59262';
+  if (clean === 'BC') return 'BC Shift - 59262';
+  if (clean === 'AC') return 'AC Shift - 59263';
+  if (clean === 'AB') return 'A Shift - 55939';
+  if (clean === 'LB') return 'B Shift - 55940';
+  if (clean === 'L') return 'L Shift - 59268';
+  if (clean === 'C') return 'C Shift - 55941';
+  if (clean === 'A') return 'A Shift - 55939';
+  if (clean === 'B') return 'B Shift - 55940';
+
+  // Prefixes
+  if (clean.startsWith('AC')) return 'AC Shift - 59263';
+  if (clean.startsWith('BC')) return 'BC Shift - 59262';
+  if (clean.startsWith('BB')) return 'BB Shift - 59261';
   if (clean.startsWith('A')) return 'A Shift - 55939';
   if (clean.startsWith('B')) return 'B Shift - 55940';
   if (clean.startsWith('C')) return 'C Shift - 55941';
   if (clean.startsWith('L')) return 'L Shift - 59268';
-  return `${shiftCode.trim()} - 53651`;
+
+  return 'Day Off - 53651';
 }
 
 async function getEmployeeTeamType(matchedAppEmp, sysEmp, weekSchedMap, schedules, targetDates, allTeams = []) {
@@ -143,7 +192,39 @@ async function getEmployeeTeamType(matchedAppEmp, sysEmp, weekSchedMap, schedule
   if (isEnkiduLeader(empName)) return 'morning';
   if (isYounisLeader(empName)) return 'evening';
 
-  // 2. Check assigned team name
+  // 2. Shift pattern analysis across target dates
+  const morningShifts = ['A', 'AC', 'AB', 'L'];
+  const eveningShifts = ['B', 'BB', 'BC', 'LB'];
+  let morningCount = 0;
+  let eveningCount = 0;
+
+  if (matchedAppEmp?.id) {
+    const empId = matchedAppEmp.id;
+    if (targetDates && targetDates.length > 0) {
+      targetDates.forEach(date => {
+        const raw = weekSchedMap?.[empId]?.[date] || schedules?.[empId]?.[date] || '';
+        const code = (raw + '').toUpperCase().trim();
+        if (morningShifts.includes(code)) morningCount++;
+        else if (eveningShifts.includes(code)) eveningCount++;
+      });
+    }
+
+    if (morningCount > eveningCount) return 'morning';
+    if (eveningCount > morningCount) return 'evening';
+
+    // 3. Check loaded schedules state across other dates
+    if (schedules?.[empId]) {
+      Object.values(schedules[empId]).forEach(raw => {
+        const code = (raw + '').toUpperCase().trim();
+        if (morningShifts.includes(code)) morningCount++;
+        else if (eveningShifts.includes(code)) eveningCount++;
+      });
+      if (morningCount > eveningCount) return 'morning';
+      if (eveningCount > morningCount) return 'evening';
+    }
+  }
+
+  // 4. Check assigned team name
   const teamObj = (allTeams || []).find(t => t.id === matchedAppEmp?.team_id);
   const teamName = ((matchedAppEmp?.teams?.name || teamObj?.name || '') + '').toLowerCase().trim();
   if (
@@ -163,60 +244,9 @@ async function getEmployeeTeamType(matchedAppEmp, sysEmp, weekSchedMap, schedule
     return 'morning';
   }
 
-  // 3. Shift pattern analysis across target dates & schedule records
-  const morningShifts = ['A', 'AC', 'AB', 'L'];
-  const eveningShifts = ['B', 'BB', 'BC', 'LB'];
-  let morningCount = 0;
-  let eveningCount = 0;
-
-  if (matchedAppEmp?.id) {
-    const empId = matchedAppEmp.id;
-
-    // Check target dates first
-    if (targetDates && targetDates.length > 0) {
-      targetDates.forEach(date => {
-        const raw = weekSchedMap?.[empId]?.[date] || schedules?.[empId]?.[date] || '';
-        const code = (raw + '').toUpperCase().trim();
-        if (morningShifts.includes(code)) morningCount++;
-        else if (eveningShifts.includes(code)) eveningCount++;
-      });
-    }
-
-    // Check loaded schedules state
-    if (morningCount === 0 && eveningCount === 0 && schedules?.[empId]) {
-      Object.values(schedules[empId]).forEach(raw => {
-        const code = (raw + '').toUpperCase().trim();
-        if (morningShifts.includes(code)) morningCount++;
-        else if (eveningShifts.includes(code)) eveningCount++;
-      });
-    }
-
-    // If still 0 (e.g. agent took full leave for the exported week), check Firestore history
-    if (morningCount === 0 && eveningCount === 0) {
-      try {
-        const histQuery = query(
-          collection(db, "schedules"),
-          where("employee_id", "==", empId),
-          limit(15)
-        );
-        const histSnap = await getDocs(histQuery);
-        histSnap.forEach(docSnap => {
-          const code = (docSnap.data().shift_code || '').toUpperCase().trim();
-          if (morningShifts.includes(code)) morningCount++;
-          else if (eveningShifts.includes(code)) eveningCount++;
-        });
-      } catch (e) {
-        // Silent fallback
-      }
-    }
-  }
-
-  if (eveningCount > morningCount) {
-    return 'evening';
-  }
-  if (morningCount > eveningCount) {
-    return 'morning';
-  }
+  // 5. Explicit system employee defaultTeam fallback
+  if (sysEmp?.defaultTeam === 'evening') return 'evening';
+  if (sysEmp?.defaultTeam === 'morning') return 'morning';
 
   // Default to morning
   return 'morning';
@@ -1402,9 +1432,12 @@ function App() {
         throw new Error("Please select a valid date range to export.");
       }
 
+      // Strictly sort dates chronologically (Sun -> Sat)
+      const finalDates = [...targetDates].sort();
+      const minDate = finalDates[0];
+      const maxDate = finalDates[finalDates.length - 1];
+
       // Fetch fresh schedule data for these dates to guarantee 100% sync
-      const minDate = targetDates[0];
-      const maxDate = targetDates[targetDates.length - 1];
       const schedQuery = query(
         collection(db, "schedules"),
         where("work_date", ">=", minDate),
@@ -1414,18 +1447,20 @@ function App() {
       const weekSchedMap = {};
       schedSnap.forEach(dSnap => {
         const s = dSnap.data();
-        if (!weekSchedMap[s.employee_id]) weekSchedMap[s.employee_id] = {};
-        weekSchedMap[s.employee_id][s.work_date] = s.shift_code || '';
+        if (s && s.employee_id && s.work_date) {
+          if (!weekSchedMap[s.employee_id]) weekSchedMap[s.employee_id] = {};
+          weekSchedMap[s.employee_id][s.work_date] = (s.shift_code || '').trim();
+        }
       });
 
-      // Headers matching Image 1:
+      // Headers matching official system format:
       // Column A: 'Employment Number'
       // Column B: 'Employee name'
       // Columns C-I: 'YYYY-MM-DD Day'
       const headers = [
         'Employment Number',
         'Employee name',
-        ...targetDates.map(date => {
+        ...finalDates.map(date => {
           const dObj = new Date(date + 'T00:00:00');
           const dayName = isNaN(dObj.getTime()) ? '' : DAY_NAMES[dObj.getDay()];
           return `${date} ${dayName}`;
@@ -1433,61 +1468,92 @@ function App() {
       ];
 
       // Build rows in the exact order of the organization's 47 system employees.
-      // Every employee is mapped 1-to-1 using prioritized aliases.
+      // Every employee is mapped 1-to-1 using prioritized multi-tier matching.
       // NO duplicates and NO extra rows appended.
       const rows = [];
       const usedAppEmpIds = new Set();
 
       for (const sysEmp of SYSTEM_EMPLOYEES) {
         let matchedAppEmp = null;
+        const normSysName = normalizeEmpName(sysEmp.name);
+        const normAliases = (sysEmp.aliases || []).map(a => normalizeEmpName(a));
 
-        // 1. Direct empNo match if set in employee record
+        // Tier 1: Direct empNo match if set on employee record
         if (sysEmp.empNo) {
           matchedAppEmp = employees.find(e => 
             !usedAppEmpIds.has(e.id) && 
             e.employment_number && 
-            Number(e.employment_number) === sysEmp.empNo
+            Number(e.employment_number) === Number(sysEmp.empNo)
           );
         }
 
-        // 2. Exact match on aliases
-        if (!matchedAppEmp && sysEmp.aliases) {
-          for (const alias of sysEmp.aliases) {
-            matchedAppEmp = employees.find(e => {
-              if (usedAppEmpIds.has(e.id) || !e.name) return false;
-              const clean = e.name.toLowerCase().trim();
-              return clean === alias;
-            });
-            if (matchedAppEmp) break;
-          }
+        // Tier 2: Exact full name match
+        if (!matchedAppEmp) {
+          matchedAppEmp = employees.find(e => {
+            if (usedAppEmpIds.has(e.id) || !e.name) return false;
+            return normalizeEmpName(e.name) === normSysName;
+          });
         }
 
-        // 3. Substring match on aliases
-        if (!matchedAppEmp && sysEmp.aliases) {
-          for (const alias of sysEmp.aliases) {
-            matchedAppEmp = employees.find(e => {
-              if (usedAppEmpIds.has(e.id) || !e.name) return false;
-              const clean = e.name.toLowerCase().trim();
-              return clean.includes(alias) || alias.includes(clean);
-            });
-            if (matchedAppEmp) break;
-          }
+        // Tier 3: Exact alias match
+        if (!matchedAppEmp) {
+          matchedAppEmp = employees.find(e => {
+            if (usedAppEmpIds.has(e.id) || !e.name) return false;
+            const clean = normalizeEmpName(e.name);
+            return normAliases.includes(clean);
+          });
+        }
+
+        // Tier 4: Token-based match (First + Last / Father name)
+        if (!matchedAppEmp) {
+          matchedAppEmp = employees.find(e => {
+            if (usedAppEmpIds.has(e.id) || !e.name) return false;
+            const appTokens = normalizeEmpName(e.name).split(' ').filter(t => t.length >= 3);
+            if (appTokens.length < 2) return false;
+
+            const sysTokens = normSysName.split(' ').filter(t => t.length >= 3);
+            if (appTokens.every(t => sysTokens.includes(t))) return true;
+
+            for (const alias of normAliases) {
+              const aTokens = alias.split(' ').filter(t => t.length >= 3);
+              if (aTokens.length >= 2 && appTokens.every(t => aTokens.includes(t))) return true;
+            }
+            return false;
+          });
+        }
+
+        // Tier 5: Controlled distinctive substring match
+        if (!matchedAppEmp) {
+          matchedAppEmp = employees.find(e => {
+            if (usedAppEmpIds.has(e.id) || !e.name) return false;
+            const clean = normalizeEmpName(e.name);
+            if (clean.length < 4) return false;
+            const genericCommonNames = ['mohammed', 'ahmed', 'ali', 'omar', 'salam', 'khalil', 'kamil', 'hussein', 'salih', 'rashid'];
+            if (genericCommonNames.includes(clean)) return false;
+
+            for (const alias of normAliases) {
+              if (alias.length >= 4 && (clean === alias || clean.startsWith(alias + ' ') || clean.endsWith(' ' + alias))) {
+                return true;
+              }
+            }
+            return false;
+          });
         }
 
         if (matchedAppEmp) {
           usedAppEmpIds.add(matchedAppEmp.id);
         }
 
-        const empTeamType = await getEmployeeTeamType(matchedAppEmp, sysEmp, weekSchedMap, schedules, targetDates, teams);
+        const empTeamType = await getEmployeeTeamType(matchedAppEmp, sysEmp, weekSchedMap, schedules, finalDates, teams);
 
         const row = [
           sysEmp.empNo,
           sysEmp.name,
-          ...targetDates.map(date => {
-            const shiftCode = (matchedAppEmp && weekSchedMap[matchedAppEmp.id]?.[date]) || 
-                              (matchedAppEmp && schedules[matchedAppEmp.id]?.[date]) || 
-                              '';
-            return formatShiftForSystem(shiftCode, empTeamType);
+          ...finalDates.map(date => {
+            const rawShift = (matchedAppEmp && weekSchedMap[matchedAppEmp.id]?.[date] !== undefined && weekSchedMap[matchedAppEmp.id]?.[date] !== '')
+              ? weekSchedMap[matchedAppEmp.id][date]
+              : (matchedAppEmp && schedules[matchedAppEmp.id]?.[date]) || '';
+            return formatShiftForSystem(rawShift, empTeamType);
           })
         ];
         rows.push(row);
