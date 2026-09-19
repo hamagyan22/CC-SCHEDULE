@@ -87,17 +87,40 @@ const SHIFT_SYSTEM_CODE_MAP = {
   'L': 'L Shift - 59268',
   'OFF': 'Day Off - 53651',
   'OUT': 'Day Off - 53651',
-  'V': 'Day Off - 53651',
   'H': 'Day Off - 53651',
-  'S': 'Day Off - 53651',
   'EMERGENCY': 'Day Off - 53651',
 };
 
-function formatShiftForSystem(shiftCode) {
+function formatShiftForSystem(shiftCode, empTeamType = 'morning') {
   if (!shiftCode || shiftCode.trim() === '' || shiftCode.trim() === '-') {
     return 'Day Off - 53651';
   }
   const clean = shiftCode.trim().toUpperCase();
+
+  // S (Sick Leave) and V (Vacation Leave):
+  // Do NOT make them Day Off.
+  // If employee is from morning team -> 'A Shift - 55939'
+  // If employee is from evening team -> 'B Shift - 55940'
+  const isSickOrVacation = 
+    clean === 'S' || 
+    clean === 'V' || 
+    clean === 'SICK' || 
+    clean === 'VACATION' ||
+    clean === 'SICK LEAVE' ||
+    clean === 'VACATION LEAVE' ||
+    clean.startsWith('S -') ||
+    clean.startsWith('V -') ||
+    clean.startsWith('SICK ') ||
+    clean.startsWith('VACATION ') ||
+    clean.startsWith('S/') ||
+    clean.startsWith('V/') ||
+    clean === 'S.' ||
+    clean === 'V.';
+
+  if (isSickOrVacation) {
+    return empTeamType === 'evening' ? 'B Shift - 55940' : 'A Shift - 55939';
+  }
+
   if (SHIFT_SYSTEM_CODE_MAP[clean]) {
     return SHIFT_SYSTEM_CODE_MAP[clean];
   }
@@ -112,6 +135,91 @@ function formatShiftForSystem(shiftCode) {
   if (clean.startsWith('C')) return 'C Shift - 55941';
   if (clean.startsWith('L')) return 'L Shift - 59268';
   return `${shiftCode.trim()} - 53651`;
+}
+
+async function getEmployeeTeamType(matchedAppEmp, sysEmp, weekSchedMap, schedules, targetDates, allTeams = []) {
+  // 1. Check known Team Leaders by name
+  const empName = (matchedAppEmp?.name || sysEmp?.name || '').toLowerCase();
+  if (isEnkiduLeader(empName)) return 'morning';
+  if (isYounisLeader(empName)) return 'evening';
+
+  // 2. Check assigned team name
+  const teamObj = (allTeams || []).find(t => t.id === matchedAppEmp?.team_id);
+  const teamName = ((matchedAppEmp?.teams?.name || teamObj?.name || '') + '').toLowerCase().trim();
+  if (
+    teamName.includes('evening') || 
+    teamName.includes('مساء') || 
+    teamName.includes('مسائي') || 
+    teamName.includes('night') || 
+    teamName.includes('ليلي')
+  ) {
+    return 'evening';
+  }
+  if (
+    teamName.includes('morning') || 
+    teamName.includes('صباح') || 
+    teamName.includes('صباحي')
+  ) {
+    return 'morning';
+  }
+
+  // 3. Shift pattern analysis across target dates & schedule records
+  const morningShifts = ['A', 'AC', 'AB', 'L'];
+  const eveningShifts = ['B', 'BB', 'BC', 'LB'];
+  let morningCount = 0;
+  let eveningCount = 0;
+
+  if (matchedAppEmp?.id) {
+    const empId = matchedAppEmp.id;
+
+    // Check target dates first
+    if (targetDates && targetDates.length > 0) {
+      targetDates.forEach(date => {
+        const raw = weekSchedMap?.[empId]?.[date] || schedules?.[empId]?.[date] || '';
+        const code = (raw + '').toUpperCase().trim();
+        if (morningShifts.includes(code)) morningCount++;
+        else if (eveningShifts.includes(code)) eveningCount++;
+      });
+    }
+
+    // Check loaded schedules state
+    if (morningCount === 0 && eveningCount === 0 && schedules?.[empId]) {
+      Object.values(schedules[empId]).forEach(raw => {
+        const code = (raw + '').toUpperCase().trim();
+        if (morningShifts.includes(code)) morningCount++;
+        else if (eveningShifts.includes(code)) eveningCount++;
+      });
+    }
+
+    // If still 0 (e.g. agent took full leave for the exported week), check Firestore history
+    if (morningCount === 0 && eveningCount === 0) {
+      try {
+        const histQuery = query(
+          collection(db, "schedules"),
+          where("employee_id", "==", empId),
+          limit(15)
+        );
+        const histSnap = await getDocs(histQuery);
+        histSnap.forEach(docSnap => {
+          const code = (docSnap.data().shift_code || '').toUpperCase().trim();
+          if (morningShifts.includes(code)) morningCount++;
+          else if (eveningShifts.includes(code)) eveningCount++;
+        });
+      } catch (e) {
+        // Silent fallback
+      }
+    }
+  }
+
+  if (eveningCount > morningCount) {
+    return 'evening';
+  }
+  if (morningCount > eveningCount) {
+    return 'morning';
+  }
+
+  // Default to morning
+  return 'morning';
 }
 
 function generateWeeksForYear(year) {
@@ -1330,7 +1438,7 @@ function App() {
       const rows = [];
       const usedAppEmpIds = new Set();
 
-      SYSTEM_EMPLOYEES.forEach(sysEmp => {
+      for (const sysEmp of SYSTEM_EMPLOYEES) {
         let matchedAppEmp = null;
 
         // 1. Direct empNo match if set in employee record
@@ -1370,6 +1478,8 @@ function App() {
           usedAppEmpIds.add(matchedAppEmp.id);
         }
 
+        const empTeamType = await getEmployeeTeamType(matchedAppEmp, sysEmp, weekSchedMap, schedules, targetDates, teams);
+
         const row = [
           sysEmp.empNo,
           sysEmp.name,
@@ -1377,11 +1487,11 @@ function App() {
             const shiftCode = (matchedAppEmp && weekSchedMap[matchedAppEmp.id]?.[date]) || 
                               (matchedAppEmp && schedules[matchedAppEmp.id]?.[date]) || 
                               '';
-            return formatShiftForSystem(shiftCode);
+            return formatShiftForSystem(shiftCode, empTeamType);
           })
         ];
         rows.push(row);
-      });
+      }
 
       // Create sheet & workbook
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
